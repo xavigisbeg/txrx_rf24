@@ -7,10 +7,10 @@ import RPi.GPIO as GPIO
 import math
 import zlib
 
+''' Functions definition '''
 
-##########  Functions definition  ##########
 
-def ini_state_funtion():
+def ini_state_function():
     global role
     global state
 
@@ -23,7 +23,7 @@ def ini_state_funtion():
             # set up callback for irq pin
             GPIO.setmode(GPIO.BCM)
             GPIO.setup(irq_gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.add_event_detect(irq_gpio_pin, GPIO.FALLING, callback=try_read_data)
+            GPIO.add_event_detect(irq_gpio_pin, GPIO.FALLING, callback=try_read_data)  # TODO
         radio.openWritingPipe(pipes[1])
         radio.openReadingPipe(1, pipes[0])
         radio.startListening()
@@ -47,7 +47,8 @@ def sender_send_function():
     print(len(file_content))
     if len(file_content) > 1:
         content_to_send = file_content
-    else: #EOF
+    else:
+        # EOF
         content_to_send = b"0"
         still_messages_to_send = 0
     radio.write(content_to_send[0:31])
@@ -80,9 +81,10 @@ def sender_receive_function():
         response_received = bytes(receive_payload)
         # Check if it is the last message
         if len(receive_payload) == 1:
-			# Check if the character of the EOF is correct
-            communication_on = 0
-        # Prepare next message to be send
+            pass
+            # Check if the character of the EOF is correct
+            # communication_on = 0
+            # Prepare next message to be send
         if still_messages_to_send == 1:
             file_content = file_content.replace(file_content[0:31], b"")
     time.sleep(0.1)
@@ -94,22 +96,22 @@ def receiver_function():
     global message_numeration_receiver
     global message_to_add_to_file
     global communication_on
-    global compressed_file_recieved
+    global compressed_file_received
 
     if radio.available():
         lent = radio.getDynamicPayloadSize()
         receive_payload = radio.read(lent)
         if len(receive_payload) == 1:  # Last message
             print("Last message")
-            compressed_file_recieved += message_to_add_to_file
-            print(len(compressed_file_recieved))
-            decompressed_bytes = zlib.decompress(compressed_file_recieved, wbits=15)
+            compressed_file_received += message_to_add_to_file
+            print(len(compressed_file_received))
+            decompressed_bytes = zlib.decompress(compressed_file_received, wbits=15)
             with open('textfile_r.txt', "wb") as text_file:
                 text_file.write(decompressed_bytes)
             communication_on = 0
         else:  # Message expected
             if message_to_add_to_file != receive_payload:
-                compressed_file_recieved += message_to_add_to_file
+                compressed_file_received += message_to_add_to_file
             message_to_add_to_file = receive_payload
 
         radio.stopListening()
@@ -118,19 +120,16 @@ def receiver_function():
         radio.startListening()
 
 
-
-##########  Pin set-up  ##########
+''' Pin set-up '''
 
 # Set the CE and CSN pins
-radio = RF24(22, 0);
+radio = RF24(22, 0)
 
 # Set the IRQ pin. Disconnected by the moment (GPIO24)
 irq_gpio_pin = None
 # irq_gpio_pin = 24
 
-
-
-##########  Constants definitions  ##########
+''' Constants definitions '''
 
 pipes = [0xF0F0F0F0E1, 0xF0F0F0F0D2]
 
@@ -151,11 +150,9 @@ message_numeration_receiver = 1
 message_to_add_to_file = b""  # Message to write into text file
 last_character_position = 0
 still_messages_to_send = 1
-compressed_file_recieved = b""
+compressed_file_received = b""
 
-
-
-##########  Read & write file text   ##########
+''' Read & write file text '''
 
 # Read text file and transform it into bytes
 with open('textfile.txt', "rb") as f:
@@ -167,9 +164,7 @@ file_content = zlib.compress(file, level=9)
 with open('textfile_r.txt', "wb") as text_file:
     text_file.write(b"")
 
-
-
-##########  Start comunnication  ##########
+''' Start comunnication '''
 
 # Time start
 millis = lambda: int(round(time.time() * 1000))
@@ -178,7 +173,7 @@ print('Start')
 
 while communication_on == 1:
     if state == INI_STATE:
-        ini_state_funtion()
+        ini_state_function()
     elif state == SENDER_SEND_STATE:
         sender_send_function()
     elif state == SENDER_RECEIVE_STATE:
