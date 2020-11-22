@@ -1,0 +1,26 @@
+# -*- coding: utf-8 -*-
+
+
+# ------------ States Definition ------------ #
+
+STATE_FINAL         = 0
+STATE_INIT          = 1
+STATE_READ_SWITCHES = 2
+
+STATE_TX_MOUNT_USB                    = 3
+STATE_TX_COPY_FROM_USB                = 4
+STATE_TX_COMPRESS                     = 5
+STATE_TX_CREATE_FRAMES_TO_SEND        = 6
+STATE_TX_TRANSMISSION_INIT            = 7
+STATE_TX_TRANSMISSION_SEND_MSG        = 8
+STATE_TX_TRANSMISSION_RECEIVE_ACK     = 9
+STATE_TX_TRANSMISSION_SEND_EOT        = 10
+STATE_TX_TRANSMISSION_RECEIVE_EOT_ACK = 11
+
+STATE_RX_TRANSMISSION_INIT        = 12
+STATE_RX_TRANSMISSION_RECEIVE_MSG = 13
+STATE_RX_DECOMPRESS               = 14
+STATE_RX_MOUNT_USB                = 15
+STATE_RX_COPY_TO_USB              = 16
+
+STATE_NM = 17
