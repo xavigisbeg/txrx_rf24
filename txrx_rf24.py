@@ -10,15 +10,13 @@ import zlib
 ''' Functions definition '''
 
 
-def ini_state_function():
-    global role
-    global state
+def ini_state_function(l_role):
 
     radio.begin()
     radio.enableDynamicPayloads()  # Dynamic ACK enables
     radio.setRetries(5, 15)  # radio.setchannel()
 
-    if role == 0:  # Receiver
+    if l_role == 0:  # Receiver
         if irq_gpio_pin is not None:
             # set up callback for irq pin
             GPIO.setmode(GPIO.BCM)
@@ -27,12 +25,13 @@ def ini_state_function():
         radio.openWritingPipe(pipes[1])
         radio.openReadingPipe(1, pipes[0])
         radio.startListening()
-        state = RECEIVER_STATE
+        l_state = RECEIVER_STATE
 
     else:  # Sender
         radio.openWritingPipe(pipes[0])
         radio.openReadingPipe(1, pipes[1])
-        state = SENDER_SEND_STATE
+        l_state = SENDER_SEND_STATE
+    return l_state
 
 
 def sender_send_function():
@@ -173,7 +172,7 @@ print('Start')
 
 while communication_on == 1:
     if state == INI_STATE:
-        ini_state_function()
+        state = ini_state_function(role)
     elif state == SENDER_SEND_STATE:
         sender_send_function()
     elif state == SENDER_RECEIVE_STATE:
