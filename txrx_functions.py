@@ -3,7 +3,6 @@ import os
 import math
 import zlib
 from RF24 import *
-import RPi.GPIO as GPIO
 from txrx_utils import *
 
 

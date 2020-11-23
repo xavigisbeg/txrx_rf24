@@ -30,6 +30,7 @@ def main():
 
         # Transmitter states
         elif state == STATE_TX_MOUNT_USB:
+            # stuck here until the USB is detected and mounted
             state = run_st_tx_mount_usb()
 
         elif state == STATE_TX_COPY_FROM_USB:
@@ -67,6 +68,7 @@ def main():
             state = run_st_rx_decompress()
 
         elif state == STATE_RX_MOUNT_USB:
+            # stuck here until the USB is detected and mounted
             state = run_st_rx_mount_usb()
 
         elif state == STATE_RX_COPY_TO_USB:

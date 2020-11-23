@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import RPi.GPIO as GPIO
 
 # ------------ States Definition ------------ #
 
@@ -24,3 +24,103 @@ STATE_RX_MOUNT_USB                = 15
 STATE_RX_COPY_TO_USB              = 16
 
 STATE_NM = 17
+
+# --------------- Interface  ---------------- #
+
+
+class Switches:
+    def __init__(self):
+        self.start = Switch(10)
+        self.Tx    = Switch(11)
+        self.SRI   = Switch(12)
+        self.MRM   = Switch(13)
+        self.NM    = Switch(14)
+        self.other = Switch(15)  # yet undefined
+
+    def update_switches(self):
+        self.start.read_switch()
+        self.Tx.read_switch()
+        self.SRI.read_switch()
+        self.MRM.read_switch()
+        self.NM.read_switch()
+        self.other.read_switch()
+
+
+class Switch:
+    def __init__(self, p_pin):
+        GPIO.setup(p_pin, GPIO.IN)
+        self.pin = p_pin
+        self.value = GPIO.input(p_pin)
+
+    def read_switch(self):
+        self.value = GPIO.input(self.pin)  # TODO: might be inverted
+
+    def is_on(self):
+        self.read_switch()
+        return self.value
+
+
+class LEDs:
+    def __init__(self):
+        self.start = LED(16)
+        self.Tx    = LED(17)
+        self.SRI   = LED(18)
+        self.MRM   = LED(19)
+        self.NM    = LED(20)
+        self.other = LED(21)  # yet undefined
+
+
+class LED:
+    def __init__(self, p_pin):
+        GPIO.setup(p_pin, GPIO.IN)
+        self.pin = p_pin
+        self.value = GPIO.output(p_pin, GPIO.LOW)  # TODO: might be inverted
+
+    def on(self):
+        GPIO.output(self.pin, GPIO.HIGH)  # TODO: might be inverted
+
+    def off(self):
+        GPIO.output(self.pin, GPIO.LOW)  # TODO: might be inverted
+
+
+class Interface:
+
+    def __init__(self):
+        GPIO.setmode(GPIO.BOARD)
+        self.sw = Switches()
+        self.led = LEDs()
+        self._mode = None
+
+    def get_mode(self):  # TODO: Decide if mode is updated anytime, so it happens every update and remove first line
+        self.update()
+        if self.sw.SRI.is_on() and not any([self.sw.MRM.is_on(), self.sw.NM.is_on()]):
+            self._mode = 'SRI'
+        elif self.sw.MRM.is_on() and not any([self.sw.SRI.is_on(), self.sw.NM.is_on()]):
+            self._mode = 'MRM'
+        elif self.sw.NM.is_on() and not any([self.sw.SRI.is_on(), self.sw.MRM.is_on()]):
+            self._mode = 'NM'
+        else:
+            self._mode = None
+        return self._mode
+
+    def update(self):
+        """Updates all switch values and sets LEDs, does not change mode"""
+        self.sw.update_switches()
+
+        if self.sw.start.is_on(): self.led.start.on()
+        else: self.led.start.off()
+
+        if self.sw.Tx.is_on(): self.led.Tx.on()
+        else: self.led.Tx.off()
+
+        if self.sw.SRI.is_on(): self.led.SRI.on()
+        else: self.led.SRI.off()
+
+        if self.sw.MRM.is_on(): self.led.MRM.on()
+        else: self.led.MRM.off()
+
+        if self.sw.NM.is_on(): self.led.NM.on()
+        else: self.led.NM.off()
+
+        if self.sw.other.is_on(): self.led.other.on()
+        else: self.led.other.off()
