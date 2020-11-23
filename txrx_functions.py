@@ -151,7 +151,7 @@ def run_st_tx_transmission_receive_eot_ack():
 
 # ------------ Receiver functions ------------ #
 
-def run_st_rx_transmission_init(radio, pipes):
+def run_st_rx_transmission_init(radio, pipes, irq_gpio_pin, GPIO):
     """ Initialize the receiver and the object radio """
     # TODO
     # The objects radio, irq_gpio_pin, pipes will be global in this file
@@ -160,11 +160,11 @@ def run_st_rx_transmission_init(radio, pipes):
     radio.enableDynamicPayloads()  # Dynamic ACK enables
     radio.setRetries(5, 15)  # radio.setchannel()
 
-    #if irq_gpio_pin is not None:
-    #    # set up callback for irq pin
-    #    GPIO.setmode(GPIO.BCM)
-    #    GPIO.setup(irq_gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    #    GPIO.add_event_detect(irq_gpio_pin, GPIO.FALLING, callback=try_read_data)
+    if irq_gpio_pin is not None:
+        # set up callback for irq pin
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(irq_gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(irq_gpio_pin, GPIO.FALLING, callback=try_read_data)
     radio.openWritingPipe(pipes[1])
     radio.openReadingPipe(1, pipes[0])
     radio.startListening()

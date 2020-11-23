@@ -77,7 +77,7 @@ def main():
 
         # Receiver states
         elif state == STATE_RX_TRANSMISSION_INIT:
-            state, rx_message_to_add_to_file = run_st_rx_transmission_init(radio, pipes)
+            state, rx_message_to_add_to_file = run_st_rx_transmission_init(radio, pipes, irq_gpio_pin, GPIO)
 
         elif state == STATE_RX_TRANSMISSION_RECEIVE_MSG:
             state, rx_message_to_add_to_file = run_st_rx_transmission_receive_msg(radio, rx_message_to_add_to_file)
