@@ -1,18 +1,30 @@
 import time
 import os
 import math
+import subprocess
 import zlib
 from RF24 import *
 import RPi.GPIO as GPIO
 from txrx_utils import *
 
-
+# ----------- Global parameters ----------- #
 LENGTH_OF_FRAMES = 32
 NAME_OF_FILE = "text_file.txt"
 END_OF_TRANSMISSION = bytearray(b"The transmission is over now!!!")
 
+# ----------- Pin set-up ----------- #
+# Set the CE and CSN pins
+RADIO = RF24(22, 0)
 
-# ------------ Common functions ------------ #
+# Set the IRQ pin. Disconnected by the moment (GPIO24)
+IRQ_GPIO_PIN = None
+# IRQ_GPIO_PIN = 24
+
+# ----------- Constants definitions ----------- #
+PIPES = [0xF0F0F0F0E1, 0xF0F0F0F0D2]
+
+
+# ------------ Common states functions ------------ #
 
 def run_st_read_start_switch(pr_state):
     """ Read the start switch """
@@ -30,7 +42,7 @@ def run_st_read_start_switch(pr_state):
 def run_st_read_switches():
     """ Read the switches for the Network Mode and the TX/RX """
     network_mode_switch = False  # TODO function to read the Network Mode switch
-    tx_switch = False  # TODO function to read the TX/RX switch
+    tx_switch = False  # TODO function to read the TX/RX switch # to change to set to transmitter or receiver
     if network_mode_switch:
         r_state = STATE_NM
     else:  # Individual Modes
@@ -41,11 +53,28 @@ def run_st_read_switches():
     return r_state
 
 
-# ------------ Transmitter functions ------------ #
+# ------------ Transmitter states functions ------------ #
+
+def mount_usb():
+    cmd = "sudo mount -t vfat /dev/sd* /mnt/usb"
+    print("\t > " + cmd)
+    process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, encoding="utf-8")
+    stderr = process.stderr.read()
+    print(stderr, end="")
+    if not stderr:  # no error
+        return True
+    elif "already mounted" in stderr:
+        return True
+    elif "does not exist" in stderr:
+        return False
+    else:
+        return False
+
 
 def run_st_tx_mount_usb():
     """ Try to mount the USB """
-    usb_mounted = True  # TODO function to try to mount the USB and return True if the USB is mounted, False else
+    # usb_mounted = True  # TODO function to try to mount the USB and return True if the USB is mounted, False else
+    usb_mounted = mount_usb()
     if usb_mounted:  # if the usb is mounted, we go to the state copy from usb
         r_state = STATE_TX_COPY_FROM_USB
     else:  # else, we remain in the same state
@@ -56,6 +85,14 @@ def run_st_tx_mount_usb():
 def run_st_tx_copy_from_usb():
     """ Copy the .txt file from the usb to the working directory under the name NAME_OF_FILE """
     # TODO copy the .txt file from the usb to the working directory under the name NAME_OF_FILE
+    print("Looking for the text file:")
+    for file in os.listdir("/mnt/usb"):
+        if os.path.splitext(file)[1] == ".txt":
+            print(file)
+            cmd = "sudo cp /mnt/usb/" + file + " " + NAME_OF_FILE
+            print("\t > " + cmd)
+            subprocess.call(cmd, shell=True)
+            break
     r_state = STATE_TX_COMPRESS
     return r_state
 
@@ -89,6 +126,11 @@ def run_st_tx_transmission_init():
     """ Initialize the transmitter and the object radio """
     # TODO
     # The objects radio, irq_gpio_pin, pipes will be global in this file
+    RADIO.begin()
+    RADIO.enableDynamicPayloads()  # Dynamic ACK enables
+    RADIO.setRetries(5, 15)  # RADIO.setchannel()
+    RADIO.openWritingPipe(PIPES[0])
+    RADIO.openReadingPipe(1, PIPES[1])
     r_frame_num = 0  # we start to send the first message
     r_state = STATE_TX_TRANSMISSION_SEND_MSG
     return r_state, r_frame_num
@@ -98,15 +140,47 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, p_frame_num):
     """ Send one frame from the list of frames """
     # TODO
     frame_to_send = p_list_of_frames[p_frame_num]
+    RADIO.stopListening()
+    RADIO.write(frame_to_send)
     r_state = STATE_TX_TRANSMISSION_RECEIVE_ACK
     return r_state
+
+
+def millis():
+    return int(round(time.time() * 1000))
+
+
+def radio_receive_ack():
+    RADIO.startListening()
+
+    # Wait here until we get a response, or timeout
+    started_waiting_at = millis()
+    timeout = False
+    while (not RADIO.available()) and (not timeout):
+        if (millis() - started_waiting_at) > 500:
+            timeout = True
+
+    if timeout:
+        print("failed, response timed out.")
+        msg_received = False
+        received_payload = bytearray(b"")
+    else:  # Message received
+        msg_received = True
+        received_msg_length = RADIO.getDynamicPayloadSize()
+        received_payload = RADIO.read(received_msg_length)
+    time.sleep(0.1)
+    return msg_received, received_payload
 
 
 def run_st_tx_transmission_receive_ack(p_list_of_frames, p_frame_num):
     """ Wait for the acknowledgement from the receiver """
     # TODO check if the received frame corresponds to the reference frame
     ref_frame = p_list_of_frames[p_frame_num]
-    ack = True  # TODO if there is an error, the ack should be False
+
+    msg_received, received_payload = radio_receive_ack()
+
+    ack = msg_received and (received_payload == ref_frame)
+    # ack = True  # TODO if there is an error, the ack should be False
     if ack:  # if we have received the acknowledgement, we can send the next message
         p_frame_num += 1
     if p_frame_num < len(p_list_of_frames):  # still frames to be sent
@@ -120,6 +194,8 @@ def run_st_tx_transmission_send_eot():
     """ Send the end of transmission """
     # TODO
     frame_to_send = END_OF_TRANSMISSION
+    RADIO.stopListening()
+    RADIO.write(frame_to_send)
     r_state = STATE_TX_TRANSMISSION_RECEIVE_EOT_ACK
     return r_state
 
@@ -128,7 +204,11 @@ def run_st_tx_transmission_receive_eot_ack():
     """ Wait for the acknowledgement of the EOT from the receiver """
     # TODO check if the received frame corresponds to the reference frame
     ref_frame = END_OF_TRANSMISSION
-    ack = True  # TODO if there is an error, the ack should be False
+
+    msg_received, received_payload = radio_receive_ack()
+
+    ack = msg_received and (received_payload == ref_frame)
+    # ack = True  # TODO if there is an error, the ack should be False
     if ack:  # if we have received the acknowledgement of the EOT, we are done
         r_state = STATE_FINAL
     else:  # else, we should retry to send the EOT
@@ -136,12 +216,23 @@ def run_st_tx_transmission_receive_eot_ack():
     return r_state
 
 
-# ------------ Receiver functions ------------ #
+# ------------ Receiver states functions ------------ #
 
 def run_st_rx_transmission_init():
     """ Initialize the receiver and the object radio """
     # TODO
     # The objects radio, irq_gpio_pin, pipes will be global in this file
+    RADIO.begin()
+    RADIO.enableDynamicPayloads()  # Dynamic ACK enables
+    RADIO.setRetries(5, 15)  # RADIO.setchannel()
+    if IRQ_GPIO_PIN is not None:
+        # set up callback for irq pin
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(IRQ_GPIO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(IRQ_GPIO_PIN, GPIO.FALLING, callback=try_read_data)  # TODO
+    RADIO.openWritingPipe(PIPES[1])
+    RADIO.openReadingPipe(1, PIPES[0])
+    RADIO.startListening()
     r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     return r_state
 
@@ -151,18 +242,27 @@ def run_st_rx_transmission_receive_msg(pr_message_to_add_to_file):
     # TODO Check if the received payload corresponds or not to the EOT
     # When we receive a frame, we should send the acknowledgement
     # The frames we receive are appended to a file ("compressed_" + NAME_OF_FILE)
-    received_payload = b""
-    if received_payload == END_OF_TRANSMISSION:
-        with open("compressed_" + NAME_OF_FILE, "ab") as f:
-            f.write(pr_message_to_add_to_file)
-        r_state = STATE_RX_DECOMPRESS
-    else:
-        if pr_message_to_add_to_file != received_payload:
+    if RADIO.available():
+        received_msg_length = RADIO.getDynamicPayloadSize()
+        received_payload = RADIO.read(received_msg_length)
+        if received_payload == END_OF_TRANSMISSION:
             with open("compressed_" + NAME_OF_FILE, "ab") as f:
                 f.write(pr_message_to_add_to_file)
-        pr_message_to_add_to_file = received_payload
+            r_state = STATE_RX_DECOMPRESS
+        else:
+            if pr_message_to_add_to_file != received_payload:
+                with open("compressed_" + NAME_OF_FILE, "ab") as f:
+                    f.write(pr_message_to_add_to_file)
+            pr_message_to_add_to_file = received_payload
+            r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
+
+        RADIO.stopListening()
+        # Send the ACK (in this case the same message)(future implementation)
+        RADIO.write(received_payload)
+        RADIO.startListening()
+    else:
+        print("Radio not available")
         r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-    # Send ACK
     return r_state, pr_message_to_add_to_file
 
 
@@ -179,7 +279,8 @@ def run_st_rx_decompress():
 
 def run_st_rx_mount_usb():
     """ Try to mount the USB """
-    usb_mounted = True  # TODO function to try to mount the USB and return True if the USB is mounted, False else
+    # usb_mounted = True  # TODO function to try to mount the USB and return True if the USB is mounted, False else
+    usb_mounted = mount_usb()
     if usb_mounted:  # if the usb is mounted, we go to the state copy from usb
         r_state = STATE_RX_COPY_TO_USB
     else:  # else, we remain in the same state
@@ -190,11 +291,14 @@ def run_st_rx_mount_usb():
 def run_st_rx_copy_to_usb():
     """ Copy the .txt file from the working directory to the usb """
     # TODO copy the .txt file from the working directory to the usb
+    cmd = "sudo cp " + NAME_OF_FILE + " /mnt/usb/" + NAME_OF_FILE
+    print("\t > " + cmd)
+    subprocess.call(cmd, shell=True)
     r_state = STATE_FINAL
     return r_state
 
 
-# ------------ Network Mode functions ------------ #
+# ------------ Network Mode states functions ------------ #
 
 def run_st_network_mode():  # TODO
     """ Network Mode """
