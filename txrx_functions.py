@@ -84,19 +84,30 @@ def run_st_tx_create_frames():
     return r_state, r_list_of_frames
 
 
-def run_st_tx_transmission_init():
+def run_st_tx_transmission_init(radio, pipes):
     """ Initialize the transmitter and the object radio """
     # TODO
     # The objects radio, irq_gpio_pin, pipes will be global in this file
+
+    radio.begin()
+    radio.enableDynamicPayloads()  # Dynamic ACK enables
+    radio.setRetries(5, 15)  # radio.setchannel()
+    radio.openWritingPipe(pipes[0])
+    radio.openReadingPipe(1, pipes[1])
+
     r_frame_num = 0  # we start to send the first message
     r_state = STATE_TX_TRANSMISSION_SEND_MSG
     return r_state, r_frame_num
 
 
-def run_st_tx_transmission_send_msg(p_list_of_frames, p_frame_num):
+def run_st_tx_transmission_send_msg(radio, p_list_of_frames, p_frame_num):
     """ Send one frame from the list of frames """
     # TODO
+
+    radio.stopListening()
+    frame_to_send = b""
     frame_to_send = p_list_of_frames[p_frame_num]
+    radio.write(frame_to_send)
     r_state = STATE_TX_TRANSMISSION_RECEIVE_ACK
     return r_state
 
@@ -115,10 +126,13 @@ def run_st_tx_transmission_receive_ack(p_list_of_frames, p_frame_num):
     return r_state, p_frame_num
 
 
-def run_st_tx_transmission_send_eot():
+def run_st_tx_transmission_send_eot(radio):
     """ Send the end of transmission """
     # TODO
+
+    radio.stopListening()
     frame_to_send = END_OF_TRANSMISSION
+    radio.write(frame_to_send)
     r_state = STATE_TX_TRANSMISSION_RECEIVE_EOT_ACK
     return r_state
 
@@ -137,31 +151,53 @@ def run_st_tx_transmission_receive_eot_ack():
 
 # ------------ Receiver functions ------------ #
 
-def run_st_rx_transmission_init():
+def run_st_rx_transmission_init(radio, pipes):
     """ Initialize the receiver and the object radio """
     # TODO
     # The objects radio, irq_gpio_pin, pipes will be global in this file
+
+    radio.begin()
+    radio.enableDynamicPayloads()  # Dynamic ACK enables
+    radio.setRetries(5, 15)  # radio.setchannel()
+
+    #if irq_gpio_pin is not None:
+    #    # set up callback for irq pin
+    #    GPIO.setmode(GPIO.BCM)
+    #    GPIO.setup(irq_gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    #    GPIO.add_event_detect(irq_gpio_pin, GPIO.FALLING, callback=try_read_data)
+    radio.openWritingPipe(pipes[1])
+    radio.openReadingPipe(1, pipes[0])
+    radio.startListening()
+
     r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     return r_state
 
 
-def run_st_rx_transmission_receive_msg(pr_message_to_add_to_file):
+def run_st_rx_transmission_receive_msg(radio, pr_message_to_add_to_file):
     """ Wait for a message and send back an acknowledgment when received """
     # TODO Check if the received payload corresponds or not to the EOT
     # When we receive a frame, we should send the acknowledgement
     # The frames we receive are appended to a file ("compressed_" + NAME_OF_FILE)
-    received_payload = b""
-    if received_payload == END_OF_TRANSMISSION:
-        with open("compressed_" + NAME_OF_FILE, "ab") as f:
-            f.write(pr_message_to_add_to_file)
-        r_state = STATE_RX_DECOMPRESS
-    else:
-        if pr_message_to_add_to_file != received_payload:
+
+    if radio.available():
+        lent = radio.getDynamicPayloadSize()
+        received_payload = radio.read(lent)
+        if received_payload == END_OF_TRANSMISSION:
             with open("compressed_" + NAME_OF_FILE, "ab") as f:
                 f.write(pr_message_to_add_to_file)
-        pr_message_to_add_to_file = received_payload
-        r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-    # Send ACK
+            r_state = STATE_RX_DECOMPRESS
+        else:
+            if pr_message_to_add_to_file != received_payload:
+                with open("compressed_" + NAME_OF_FILE, "ab") as f:
+                    f.write(pr_message_to_add_to_file)
+            pr_message_to_add_to_file = received_payload
+            r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
+
+        radio.stopListening()
+    # Send the ACK (in this case the same message)(future implementation)
+    radio.write(received_payload)
+    radio.startListening()
+
     return r_state, pr_message_to_add_to_file
 
 
