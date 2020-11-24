@@ -4,11 +4,12 @@ import math
 import subprocess
 import zlib
 from RF24 import *
-import RPi.GPIO as GPIO
 from txrx_utils import *
+
 
 # ----------- Global parameters ----------- #
 LENGTH_OF_FRAMES = 32
+USB_FOLDER = "/media/usb0"
 NAME_OF_FILE = "text_file.txt"
 END_OF_TRANSMISSION = bytearray(b"The transmission is over now!!!")
 # END_OF_TRANSMISSION = bytearray(b"")
@@ -16,9 +17,12 @@ END_OF_TRANSMISSION = bytearray(b"The transmission is over now!!!")
 # ----------- Radio set-up ----------- #
 RADIO = RF24(22, 0)  # 22: CE GPIO, 0: CSN GPIO, (SPI speed: 10 MHz)
 PIPES = [0xF0F0F0F0E1, 0xF0F0F0F0D2]  # address of the pipes
+# Set the IRQ pin. DIsconnected by the moment (GPIO24)
+IRQ_GPIO_PIN = None
+# IRQ_GPIO_PIN = 24
 
 
-# ------------ Common states functions ------------ #
+# ------------ Common state functions ------------ #
 
 def run_st_read_start_switch(pr_state):
     """ Read the start switch """
@@ -48,7 +52,7 @@ def run_st_read_switches():
     return r_state
 
 
-# ------------ Transmitter states functions ------------ #
+# ------------ Transmitter state functions ------------ #
 
 def create_mnt_usb_repo():
     cmd = "sudo mkdir /mnt/usb"
@@ -89,10 +93,10 @@ def run_st_tx_copy_from_usb():
     """ Copy the .txt file from the usb to the working directory under the name NAME_OF_FILE """
     # TODO copy the .txt file from the usb to the working directory under the name NAME_OF_FILE
     print("Looking for the text file:")
-    for file in os.listdir("/mnt/usb"):
+    for file in os.listdir(USB_FOLDER):
         if os.path.splitext(file)[1] == ".txt":
             print(file)
-            cmd = "sudo cp /mnt/usb/" + file + " " + NAME_OF_FILE
+            cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + NAME_OF_FILE
             print("\t > " + cmd)
             subprocess.call(cmd, shell=True)
             break
@@ -139,11 +143,11 @@ def common_transceiver_init():
 def run_st_tx_transmission_init():
     """ Initialize the transmitter and the object radio """
     # TODO
-    # The objects radio, irq_gpio_pin, pipes will be global in this file
     common_transceiver_init()
     RADIO.openWritingPipe(PIPES[0])
     RADIO.openReadingPipe(1, PIPES[1])
     RADIO.stopListening()
+
     r_frame_num = 0  # we start to send the first message
     r_state = STATE_TX_TRANSMISSION_SEND_MSG
     return r_state, r_frame_num
@@ -177,35 +181,43 @@ def run_st_tx_transmission_send_eot():
     return r_state
 
 
-# ------------ Receiver states functions ------------ #
+# ------------ Receiver state functions ------------ #
 
 def run_st_rx_transmission_init():
     """ Initialize the receiver and the object radio """
     # TODO
-    # The objects radio, irq_gpio_pin, pipes will be global in this file
     common_transceiver_init()
+    if IRQ_GPIO_PIN is not None:
+        # set up callback for irq pin
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(IRQ_GPIO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(IRQ_GPIO_PIN, GPIO.FALLING, callback=try_read_data)
     RADIO.openWritingPipe(PIPES[1])
     RADIO.openReadingPipe(1, PIPES[0])
     RADIO.startListening()
+
+    with open("compressed_" + NAME_OF_FILE, "wb") as f:
+        f.write(b"")
+
     r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     return r_state
 
 
-def run_st_rx_transmission_receive_msg():  # empty the whole FIFO
+def run_st_rx_transmission_receive_msg():
     """ Wait for a message """
     # TODO Check if the received payload corresponds or not to the EOT
     # When we receive a frame, we should send the acknowledgement
     # The frames we receive are appended to a file ("compressed_" + NAME_OF_FILE)
     if RADIO.available():
         r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-        while RADIO.available():
+        while RADIO.available():  # empty the whole FIFO
             received_msg_length = RADIO.getDynamicPayloadSize()
             received_payload = bytes(RADIO.read(received_msg_length))
             with open("compressed_" + NAME_OF_FILE, "ab") as f:
                 f.write(received_payload)
             if received_payload == END_OF_TRANSMISSION:
-                r_state = STATE_RX_DECOMPRESS
                 RADIO.stopListening()
+                r_state = STATE_RX_DECOMPRESS
             else:
                 r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     else:
@@ -246,7 +258,7 @@ def run_st_rx_copy_to_usb():
     return r_state
 
 
-# ------------ Network Mode states functions ------------ #
+# ------------ Network Mode state functions ------------ #
 
 def run_st_network_mode():  # TODO
     """ Network Mode """
