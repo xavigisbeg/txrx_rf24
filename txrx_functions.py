@@ -9,7 +9,6 @@ from txrx_utils import *
 
 # ----------- Global parameters ----------- #
 LENGTH_OF_FRAMES = 32
-USB_FOLDER = "/media/usb0"
 NAME_OF_FILE = "text_file.txt"
 END_OF_TRANSMISSION = bytearray(b"The transmission is over now!!!")
 # END_OF_TRANSMISSION = bytearray(b"")
@@ -39,7 +38,6 @@ def run_st_read_start_switch(pr_state):
 
 def run_st_read_switches():
     """ Read the switches for the Network Mode and the TX/RX """
-    create_mnt_usb_repo()  # init the usb repository for the mounting
     network_mode_switch = False  # TODO function to read the Network Mode switch
     tx_switch = False  # TODO function to read the TX/RX switch # to change to set to transmitter or receiver
     if network_mode_switch:
