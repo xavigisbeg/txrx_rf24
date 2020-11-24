@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
+
+import subprocess
 import RPi.GPIO as GPIO
+
+
+# ------------ Constants Definition ------------ #
+
+# USB_FOLDER = "/media/usb0"
+USB_FOLDER = "/mnt/usb"
+
 
 # ------------ States Definition ------------ #
 
@@ -23,8 +32,8 @@ STATE_RX_COPY_TO_USB              = 14
 
 STATE_NM = 15
 
-# --------------- Interface  ---------------- #
 
+# --------------- Interface  ---------------- #
 
 class Switches:
     def __init__(self):
@@ -35,10 +44,9 @@ class Switches:
         self.MRM                = Switch(14)
         self.NM                 = Switch(15)
 
-
     def update_switches(self):
         self.start.read_switch()
-        self.enableTx.read_switch()
+        self.en_transmission.read_switch()
         self.Tx.read_switch()
         self.SRI.read_switch()
         self.MRM.read_switch()
@@ -64,12 +72,12 @@ class Switch:
 
 class LEDs:
     def __init__(self):
-        self.start      = LED(16)
-        self.mounted    = LED(17)
-        self.Tx         = LED(18)
-        self.SRI        = LED(19)
-        self.MRM        = LED(20)
-        self.NM         = LED(21)
+        self.start   = LED(16)
+        self.mounted = LED(17)
+        self.Tx      = LED(18)
+        self.SRI     = LED(19)
+        self.MRM     = LED(20)
+        self.NM      = LED(21)
 
 
 class LED:
@@ -96,11 +104,11 @@ class Interface:
     def get_mode(self):  # TODO: Decide if mode is updated anytime, so it happens every update and remove first line
         self.update()
         if self.sw.SRI.is_on() and not any([self.sw.MRM.is_on(), self.sw.NM.is_on()]):
-            self._mode = 'SRI'
+            self._mode = "SRI"
         elif self.sw.MRM.is_on() and not any([self.sw.SRI.is_on(), self.sw.NM.is_on()]):
-            self._mode = 'MRM'
+            self._mode = "MRM"
         elif self.sw.NM.is_on() and not any([self.sw.SRI.is_on(), self.sw.MRM.is_on()]):
-            self._mode = 'NM'
+            self._mode = "NM"
         else:
             self._mode = None
         return self._mode
@@ -123,3 +131,27 @@ class Interface:
 
         if self.sw.NM.is_on(): self.led.NM.on()
         else: self.led.NM.off()
+
+
+# --------------- USB Management  ---------------- #
+
+def check_mounted_usb():  # TODO use USBmount, so the USB will be auto-mounted
+    # If the directory USB_FOLDER does not exist, create it
+    cmd = "[ ! -d \"" + USB_FOLDER + "\" ] && sudo mkdir -p " + USB_FOLDER
+    print("\t > " + cmd)
+    subprocess.call(cmd, shell=True)
+
+    # Mount the USB to the USB_FOLDER
+    cmd = "sudo mount -t vfat /dev/sd* " + USB_FOLDER
+    print("\t > " + cmd)
+    process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, encoding="utf-8")
+    stderr = process.stderr.read()
+    print(stderr, end="")
+    if not stderr:  # no error
+        return True
+    elif "already mounted" in stderr:  # the USB is already mounted
+        return True
+    elif "does not exist" in stderr:  # there is no USB plugged
+        return False
+    else:
+        return False
