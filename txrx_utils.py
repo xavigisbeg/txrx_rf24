@@ -30,20 +30,21 @@ STATE_NM = 17
 
 class Switches:
     def __init__(self):
-        self.start = Switch(10)
-        self.Tx    = Switch(11)
-        self.SRI   = Switch(12)
-        self.MRM   = Switch(13)
-        self.NM    = Switch(14)
-        self.other = Switch(15)  # yet undefined
+        self.start              = Switch(10)
+        self.en_transmission    = Switch(11)  # yet undefined
+        self.Tx                 = Switch(12)
+        self.SRI                = Switch(13)
+        self.MRM                = Switch(14)
+        self.NM                 = Switch(15)
+
 
     def update_switches(self):
         self.start.read_switch()
+        self.enableTx.read_switch()
         self.Tx.read_switch()
         self.SRI.read_switch()
         self.MRM.read_switch()
         self.NM.read_switch()
-        self.other.read_switch()
 
 
 class Switch:
@@ -59,15 +60,18 @@ class Switch:
         self.read_switch()
         return self.value
 
+    def was_on(self):
+        return self.value
+
 
 class LEDs:
     def __init__(self):
-        self.start = LED(16)
-        self.Tx    = LED(17)
-        self.SRI   = LED(18)
-        self.MRM   = LED(19)
-        self.NM    = LED(20)
-        self.other = LED(21)  # yet undefined
+        self.start      = LED(16)
+        self.mounted    = LED(17)
+        self.Tx         = LED(18)
+        self.SRI        = LED(19)
+        self.MRM        = LED(20)
+        self.NM         = LED(21)
 
 
 class LED:
@@ -107,7 +111,7 @@ class Interface:
         """Updates all switch values and sets LEDs, does not change mode"""
         self.sw.update_switches()
 
-        if self.sw.start.is_on(): self.led.start.on()
+        if self.sw.start.is_on(): self.led.start.on()  # TODO: Enable and start combined usage
         else: self.led.start.off()
 
         if self.sw.Tx.is_on(): self.led.Tx.on()
@@ -121,6 +125,3 @@ class Interface:
 
         if self.sw.NM.is_on(): self.led.NM.on()
         else: self.led.NM.off()
-
-        if self.sw.other.is_on(): self.led.other.on()
-        else: self.led.other.off()
