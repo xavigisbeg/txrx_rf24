@@ -117,7 +117,7 @@ def common_transceiver_init():
     """ Initialize the common parameters for both the transmitter and the receiver """
     RADIO.begin()
 
-    RADIO.setPALevel(RF24_PA_LOW)  # RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH and RF24_PA_MAX
+    RADIO.setPALevel(RF24_PA_MIN)  # RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH and RF24_PA_MAX
     RADIO.setDataRate(RF24_1MBPS)  # RF24_250KBPS for 250kbs, RF24_1MBPS for 1Mbps, or RF24_2MBPS for 2Mbps
     RADIO.setRetries(1, 15)  # 1 -> delay from 0 up to 15 [(delay+1)*250 µs] (1-> 500µs),
     #                         15 -> retries number from 0 (no retries) up to 15
@@ -150,7 +150,7 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
         else:  # no more frame to send
             r_state = STATE_TX_TRANSMISSION_SEND_EOT  # we have to send the end of transmission
     else:
-        print("Sending failed")
+        print("Max number of retries reached, message not sent", pr_frame_num, frame_to_send)
         r_state = STATE_TX_TRANSMISSION_SEND_MSG
     return r_state, pr_frame_num
 
@@ -197,16 +197,17 @@ def run_st_rx_transmission_receive_msg():
             received_msg_length = RADIO.getDynamicPayloadSize()
             received_payload = bytes(RADIO.read(received_msg_length))
 
-            with open("compressed_" + NAME_OF_FILE, "ab") as f:
-                f.write(received_payload)
-
             if received_payload == END_OF_TRANSMISSION:
+                print("Received EOT: ", received_payload)
                 RADIO.stopListening()
                 r_state = STATE_RX_DECOMPRESS
             else:
+                print("Received packet: ", received_payload)
+                with open("compressed_" + NAME_OF_FILE, "ab") as f:
+                    f.write(received_payload)
+
                 r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     else:
-        print("Radio not available")
         r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     return r_state
 
