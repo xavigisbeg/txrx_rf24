@@ -11,6 +11,7 @@ def main():
     state = STATE_INIT
     tx_list_of_frames = [bytearray(b"")]
     tx_frame_num = 0
+    rx_previous_cnt = -1
 
     while True:
         # At any time we should return to the init state if the start switch is turned off
@@ -53,10 +54,10 @@ def main():
 
         # Receiver states
         elif state == STATE_RX_TRANSMISSION_INIT:
-            state = run_st_rx_transmission_init()
+            state, rx_previous_cnt = run_st_rx_transmission_init()
 
         elif state == STATE_RX_TRANSMISSION_RECEIVE_MSG:
-            state = run_st_rx_transmission_receive_msg()
+            state, rx_previous_cnt = run_st_rx_transmission_receive_msg(rx_previous_cnt)
 
         elif state == STATE_RX_DECOMPRESS:
             state = run_st_rx_decompress()
