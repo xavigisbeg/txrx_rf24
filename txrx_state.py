@@ -12,6 +12,7 @@ def main():
     tx_list_of_frames = [bytearray(b"")]
     tx_frame_num = 0
     rx_previous_cnt = -1
+    rx_list_received_payload = list()
 
     while True:
         # At any time we should return to the init state if the start switch is turned off
@@ -57,10 +58,11 @@ def main():
             state, rx_previous_cnt = run_st_rx_transmission_init()
 
         elif state == STATE_RX_TRANSMISSION_RECEIVE_MSG:
-            state, rx_previous_cnt = run_st_rx_transmission_receive_msg(rx_previous_cnt)
+            state, rx_previous_cnt, rx_list_received_payload = \
+                run_st_rx_transmission_receive_msg(rx_previous_cnt, rx_list_received_payload)
 
         elif state == STATE_RX_DECOMPRESS:
-            state = run_st_rx_decompress()
+            state = run_st_rx_decompress(rx_list_received_payload)
 
         elif state == STATE_RX_MOUNT_USB:
             # stuck here until the USB is detected and mounted

@@ -15,7 +15,8 @@ NAME_OF_FILE = "text_file.txt"
 END_OF_TRANSMISSION = bytearray(b"The transmission is over now!!!")
 # END_OF_TRANSMISSION = bytearray(b"")
 EOT_MASK = 1 << 7
-CNT_MASK = 0b1111
+CNT_MODULO = 4
+CNT_MASK = 0b11
 
 # ----------- Radio set-up ----------- #
 RADIO = RF24(22, 0)  # 22: CE GPIO, 0: CSN GPIO, (SPI speed: 10 MHz)
@@ -144,7 +145,7 @@ def run_st_tx_transmission_init():
 
 def create_header(p_frame_num, eot=False):
     """ Create the message header with on the EOT bit and a counter on 4 bits based on the frame number """
-    header = EOT_MASK*eot + (p_frame_num % (2**4))
+    header = EOT_MASK*eot + (p_frame_num % CNT_MODULO)
     r_bytearray_header = bytearray(header.to_bytes(1, "big"))
     return r_bytearray_header
 
@@ -160,7 +161,7 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
         else:  # no more frame to send
             r_state = STATE_TX_TRANSMISSION_SEND_EOT  # we have to send the end of transmission
     else:
-        print("Max number of retries reached, message not sent", pr_frame_num, frame_to_send)
+        print(f"Max number of retries reached {pr_frame_num}: {frame_to_send}")
         r_state = STATE_TX_TRANSMISSION_SEND_MSG
     return r_state, pr_frame_num
 
@@ -200,50 +201,48 @@ def run_st_rx_transmission_init():
     return r_state, r_previous_cnt
 
 
-def split_received_msg(received_msg):
+def split_received_msg(p_received_msg):
     """ Remove the header from the received message and extract from it the EOT bit and the message counter """
-    received_payload = received_msg[1:]
-    header = int(received_msg[:1].hex(), 16)
-    eot = (header & EOT_MASK) >> 7
-    cnt = header & CNT_MASK
-    # print(f"header: {header:#011_b}, EOT: {eot:b}, counter: {cnt:06_b}")
-    return received_payload, eot, cnt
+    r_received_payload = p_received_msg[1:]
+    header = int(p_received_msg[:1].hex(), 16)
+    r_eot = (header & EOT_MASK) >> 7
+    r_cnt = header & CNT_MASK
+    # print(f"header: {header:#011_b}, EOT: {r_eot:b}, counter: {r_cnt:06_b}")
+    return r_received_payload, r_eot, r_cnt
 
 
-def run_st_rx_transmission_receive_msg(pr_previous_cnt):
+def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload):
     """ Wait for a message """
+    r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     if RADIO.available():
-        # r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
         # while RADIO.available():  # empty the whole FIFO
         received_msg_length = RADIO.getDynamicPayloadSize()
         total_payload = bytes(RADIO.read(received_msg_length))
         received_payload, eot, cnt = split_received_msg(total_payload)
 
         if eot and received_payload == END_OF_TRANSMISSION:
-            print("Received EOT: ", received_payload)
+            print(f"Received EOT: {received_payload}")
             time.sleep(2)  # to be sure we send this last message ACK before stopping listening
             RADIO.stopListening()
             r_state = STATE_RX_DECOMPRESS
-        elif cnt != pr_previous_cnt:  # test if we haven't twice the same message
+        elif cnt == (pr_previous_cnt + 1) % CNT_MODULO:  # test if we haven't twice the same message
             pr_previous_cnt = cnt
-            print("Received packet: ", received_payload)
-
-            with open("compressed_" + NAME_OF_FILE, "ab") as f:
-                f.write(received_payload)
-
-            r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-        else:
-            r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-
-    else:
-        r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-    return r_state, pr_previous_cnt
+            print(f"Received packet ({len(pr_list_received_payload)}) \t{cnt:02b} "
+                  f"\t{received_payload}")
+            pr_list_received_payload.append(received_payload)
+            # t1 = time.time()
+            # with open("compressed_" + NAME_OF_FILE, "ab") as f:
+            #     f.write(received_payload)
+            # t2 = time.time()
+            # time_diff = t2 - t1
+    return r_state, pr_previous_cnt, pr_list_received_payload
 
 
-def run_st_rx_decompress():
+def run_st_rx_decompress(p_list_received_payload):
     """ Decompress the received frames """
-    with open("compressed_" + NAME_OF_FILE, "rb") as f:
-        compressed_bytes = f.read()
+    # with open("compressed_" + NAME_OF_FILE, "rb") as f:
+    #     compressed_bytes = f.read()
+    compressed_bytes = b"".join(p_list_received_payload)
 
     decompressed_bytes = zlib.decompress(compressed_bytes, wbits=15)
 
