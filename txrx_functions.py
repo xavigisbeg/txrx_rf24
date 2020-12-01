@@ -11,8 +11,11 @@ from txrx_utils import *
 
 # ----------- Constants Definition ----------- #
 LENGTH_OF_FRAMES = 31  # one byte is needed for the header
-NAME_OF_FILE = "text_file.txt"
+NAME_OF_INPUT_FILE = "groupB_input_text_file.txt"
+NAME_OF_OUTPUT_FILE = "groupB_output_text_file.txt"
 END_OF_TRANSMISSION = create_header(0, eot=True)
+OK_MESSAGE = bytearray(b"OK")
+NOK_MESSAGE = bytearray(b"NOK")
 
 # ----------- Radio set-up ----------- #
 RADIO = RF24(22, 0)  # 22: CE GPIO, 0: CSN GPIO, (SPI speed: 10 MHz)
@@ -70,9 +73,13 @@ def run_st_tx_copy_from_usb():
         if os.path.splitext(file)[1] == ".txt":
             txt_file_exist = True
             print("The USB contains the .txt file: " + file)
-            cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + NAME_OF_FILE
+            cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + NAME_OF_INPUT_FILE
             print("\t > " + cmd)
-            subprocess.call(cmd, shell=True)
+            try:
+                subprocess.check_call(cmd, shell=True)
+            except subprocess.SubprocessError:  # an error occurs during the copying
+                r_state = STATE_TX_MOUNT_USB  # try to remount the USB
+                return r_state
             break
     if txt_file_exist:
         r_state = STATE_TX_COMPRESS
@@ -84,13 +91,13 @@ def run_st_tx_copy_from_usb():
 
 def run_st_tx_compress():
     """ Open the .txt file in the working directory under the name NAME_OF_FILE and compress it """
-    with open(NAME_OF_FILE, "rb") as f:
+    with open(NAME_OF_INPUT_FILE, "rb") as f:
         text_bytes = f.read()
 
     compressed_bytes = zlib.compress(text_bytes, level=9)
 
     # We save the compressed bytes inside a new file
-    with open("compressed_" + NAME_OF_FILE, "wb") as f:
+    with open("compressed_" + NAME_OF_INPUT_FILE, "wb") as f:
         f.write(compressed_bytes)
 
     r_state = STATE_TX_CREATE_FRAMES_TO_SEND
@@ -99,7 +106,7 @@ def run_st_tx_compress():
 
 def run_st_tx_create_frames():
     """ Create a list of bytearray to be sent, each of length LENGTH_OF_FRAMES """
-    with open("compressed_" + NAME_OF_FILE, "rb") as f:
+    with open("compressed_" + NAME_OF_INPUT_FILE, "rb") as f:
         compressed_bytes = f.read()
 
     r_list_of_frames = list()
@@ -125,6 +132,7 @@ def common_transceiver_init():
     RADIO.setRetries(1, 15)  # 1 -> delay from 0 up to 15 [(delay+1)*250 µs] (1-> 500µs),
     #                         15 -> retries number from 0 (no retries) up to 15
     RADIO.setAutoAck(True)  # Enable auto-acknowledgement
+    RADIO.enableAckPayload()  # Enable acknowledgement payload
     RADIO.enableDynamicPayloads()  # Enable dynamic-sized payloads
     RADIO.setChannel(1)  # RF channel to communicate on: 0-125
     RADIO.setCRCLength(RF24_CRC_16)  # RF24_CRC_8 for 8-bit or RF24_CRC_16 for 16-bit
@@ -159,15 +167,40 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
     return r_state, pr_frame_num
 
 
+def check_for_received_ok_msg(pr_state):
+    """ Change state if we receive a OK or NOK message """
+    if RADIO.available():
+        received_msg_length = RADIO.getDynamicPayloadSize()
+        bytearray_payload = RADIO.read(received_msg_length)
+        print(f"Received Message: {bytearray_payload}")
+        if bytearray_payload == OK_MESSAGE:
+            pr_state = STATE_FINAL
+        elif bytearray_payload == NOK_MESSAGE:
+            pr_state = STATE_TX_RESET
+    return pr_state
+
+
 def run_st_tx_transmission_send_eot():
     """ Send the end of transmission """
+    r_frame_num = 0
     frame_to_send = END_OF_TRANSMISSION
-    if RADIO.write(frame_to_send):  # the frame was correctly sent
-        r_state = STATE_FINAL
-    else:
-        print("Sending failed")
+    if RADIO.write(frame_to_send):  # the EOT was correctly sent
         r_state = STATE_TX_TRANSMISSION_SEND_EOT
-    return r_state
+        if not RADIO.available():
+            print("Empty payload")
+        else:
+            received_msg_length = RADIO.getDynamicPayloadSize()
+            bytearray_payload = RADIO.read(received_msg_length)
+            if bytearray_payload == OK_MESSAGE:  # Transmission done
+                r_state = STATE_FINAL
+            elif bytearray_payload == NOK_MESSAGE:  # Reset transmission
+                r_frame_num = 0  # we start to send the first message
+                r_state = STATE_TX_TRANSMISSION_SEND_MSG
+    else:
+        print("Max number of retries reached: EOT")
+        r_state = STATE_TX_TRANSMISSION_SEND_EOT
+
+    return r_state, r_frame_num
 
 
 # ------------ Receiver state functions ------------ #
@@ -186,12 +219,10 @@ def run_st_rx_transmission_init():
     RADIO.openReadingPipe(1, PIPES[0])
     RADIO.startListening()
 
-    with open("compressed_" + NAME_OF_FILE, "wb") as f:
-        f.write(b"")  # initialize the reception file
-
+    r_list_received_payload = list()
     r_previous_cnt = -1
     r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-    return r_state, r_previous_cnt
+    return r_state, r_list_received_payload, r_previous_cnt
 
 
 def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload):
@@ -205,31 +236,26 @@ def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload
 
         if eot:
             print(f"Received EOT: {received_payload}")
-            # time.sleep(2)  # to be sure we send this last message ACK before stopping listening
-            # RADIO.stopListening()
             r_state = STATE_RX_DECOMPRESS
         elif cnt != pr_previous_cnt:  # test if we haven't twice the same message
             pr_previous_cnt = cnt
-            print(f"Received packet ({len(pr_list_received_payload)}) \t{cnt:02b} "
-                  f"\t{received_payload}")
+            print(f"Received packet ({len(pr_list_received_payload)}) {received_payload}")
             pr_list_received_payload.append(received_payload)
-            # t1 = time.time()
-            # with open("compressed_" + NAME_OF_FILE, "ab") as f:
-            #     f.write(received_payload)
-            # t2 = time.time()
-            # time_diff = t2 - t1
     return r_state, pr_previous_cnt, pr_list_received_payload
 
 
 def run_st_rx_decompress(p_list_received_payload):
     """ Decompress the received frames """
-    # with open("compressed_" + NAME_OF_FILE, "rb") as f:
-    #     compressed_bytes = f.read()
     compressed_bytes = b"".join(p_list_received_payload)
 
-    decompressed_bytes = zlib.decompress(compressed_bytes, wbits=15)
+    try:
+        decompressed_bytes = zlib.decompress(compressed_bytes, wbits=15)
+    except zlib.error:
+        print("ERROR IN DECOMPRESSION")
+        r_state = STATE_RX_SEND_NOK_MSG  # an error in decompression, send an NOK to reset the transmission
+        return r_state
 
-    with open(NAME_OF_FILE, "wb") as f:
+    with open(NAME_OF_OUTPUT_FILE, "wb") as f:
         f.write(decompressed_bytes)
 
     r_state = STATE_RX_MOUNT_USB
@@ -248,12 +274,63 @@ def run_st_rx_mount_usb():
 
 def run_st_rx_copy_to_usb():
     """ Copy the .txt file from the working directory to the usb """
-    cmd = "sudo cp " + NAME_OF_FILE + " " + os.path.join(USB_FOLDER, NAME_OF_FILE)
+    cmd = "sudo cp " + NAME_OF_OUTPUT_FILE + " " + os.path.join(USB_FOLDER, NAME_OF_OUTPUT_FILE)
     print("\t > " + cmd)
-    subprocess.call(cmd, shell=True)
+    try:
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.SubprocessError:  # an error occurs during the copying
+        r_state = STATE_RX_MOUNT_USB  # try to remount the USB
+        return r_state
 
+    r_state = STATE_RX_SEND_OK_MSG
+    return r_state
+
+
+def run_st_rx_send_nok_msg():
+    """ Send a NOK message to reset the transmission """
+    RADIO.startListening()
+    if RADIO.available():  # the transmitter has already starts the transmission of the file
+        print("RESET TRANSMISSION")
+        received_msg_length = RADIO.getDynamicPayloadSize()
+        total_payload = bytes(RADIO.read(received_msg_length))
+        received_payload, eot, cnt = split_received_msg(total_payload)
+
+        r_list_received_payload = list()
+        r_previous_cnt = cnt
+        print(f"Received packet ({len(r_list_received_payload)}) {received_payload}")
+        r_list_received_payload.append(received_payload)
+        r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
+
+    else:
+        frame_to_send = NOK_MESSAGE
+        RADIO.stopListening()
+        if RADIO.write(frame_to_send):  # the NOK was correctly sent, we reset the transmission
+            print("RESET TRANSMISSION")
+            RADIO.startListening()
+            r_list_received_payload = list()
+            r_previous_cnt = -1
+            r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
+        else:  # we stay in the same state
+            print("Max number of retries reached: NOK")
+            RADIO.startListening()
+            time.sleep(0.2)  # wait some time to receive a possible OK/NOK message
+            r_list_received_payload = list()
+            r_previous_cnt = -1
+            r_state = STATE_RX_SEND_NOK_MSG
+
+    return r_state, r_list_received_payload, r_previous_cnt
+
+
+def run_st_rx_send_ok_msg():
+    """ Send a OK message to tell the transmitter that everything was fine """
     RADIO.stopListening()
-    r_state = STATE_FINAL
+    frame_to_send = OK_MESSAGE
+    if RADIO.write(frame_to_send):  # the OK was correctly sent, we go to the final state
+        print("TRANSMISSION DONE")
+        r_state = STATE_FINAL
+    else:  # we stay in the same state
+        print("Max number of retries reached: OK")
+        r_state = STATE_RX_SEND_OK_MSG
     return r_state
 
 

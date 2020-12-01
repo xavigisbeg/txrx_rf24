@@ -51,11 +51,11 @@ def main():
             state, tx_frame_num = run_st_tx_transmission_send_msg(tx_list_of_frames, tx_frame_num)
 
         elif state == STATE_TX_TRANSMISSION_SEND_EOT:
-            state = run_st_tx_transmission_send_eot()
+            state, tx_frame_num = run_st_tx_transmission_send_eot()
 
         # Receiver states
         elif state == STATE_RX_TRANSMISSION_INIT:
-            state, rx_previous_cnt = run_st_rx_transmission_init()
+            state, rx_list_received_payload, rx_previous_cnt = run_st_rx_transmission_init()
 
         elif state == STATE_RX_TRANSMISSION_RECEIVE_MSG:
             state, rx_previous_cnt, rx_list_received_payload = \
@@ -70,6 +70,12 @@ def main():
 
         elif state == STATE_RX_COPY_TO_USB:
             state = run_st_rx_copy_to_usb()
+
+        elif state == STATE_RX_SEND_NOK_MSG:
+            state, rx_list_received_payload, rx_previous_cnt = run_st_rx_send_nok_msg()
+
+        elif state == STATE_RX_SEND_OK_MSG:
+            state = run_st_rx_send_ok_msg()
 
         # Network Mode states
         elif state == STATE_NM:
