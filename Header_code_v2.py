@@ -25,12 +25,16 @@ def ini_state_funtion(radio, p_role, p_pipes):
         radio.openReadingPipe(1, p_pipes[0])
         radio.startListening()
         p_state = RECEIVER_STATE
+        print("--------Receiver--------")
+        print("Start")
         return p_state
 
     else:  # Sender
         radio.openWritingPipe(p_pipes[0])
         radio.openReadingPipe(1, p_pipes[1])
         p_state = COMPRESS_STATE
+        print("--------Sender--------")
+        print("Start")
         return p_state
 
 
@@ -66,7 +70,7 @@ def  sender_reset_function(p_message_numeration):
     p_message_numeration = 1
     p_state = SENDER_SEND_STATE
     time.sleep(5)
-    print("Re-start communication - Sending")
+    print("Re-start")
     return p_state, p_file_content_c, p_message_numeration
 
 
@@ -106,7 +110,7 @@ def sender_EOF(message):
     done = False
     counter = 0
 
-    print("Send EOF")
+    print("EOF --> Sended")
     while done == False:
         radio.stopListening()
         time.sleep(0.1)
@@ -140,7 +144,7 @@ def receiver_reset_function(p_file_content_compressed, p_numeration, p_message_t
     p_file_content_compressed = b""
     p_numeration = 1
     p_message_to_add = b""
-    print("Re-start communication - Listening")
+    print("Re-start")
     radio.startListening()
 
     return p_state, p_file_content_compressed, p_numeration, p_message_to_add
@@ -164,7 +168,7 @@ def receiver_function(p_file_content_compressed, p_numeration, p_message_to_add)
         else: # EOF
             p_file_content_compressed += p_message_to_add
             p_file_content_compressed += received_message[1:]  ## To make the decompression file fail, comment this line #######################
-            print("EOF received")
+            print("EOF --> Received")
             time.sleep(1)
             p_state = DECOMPRESS_STATE
     return p_state, p_file_content_compressed, p_numeration, p_message_to_add
@@ -250,8 +254,6 @@ decompress_OK = False
 
 # Time start
 millis = lambda: int(round(time.time() * 1000))
-
-print('Start')
 
 state = INI_STATE
 
