@@ -166,8 +166,8 @@ CNT_MASK = 0b11
 def create_header(p_frame_num, eot=False):
     """ Create the message header with on the EOT bit and a counter on 4 bits based on the frame number """
     header = EOT_MASK*eot + (p_frame_num % CNT_MODULO)
-    r_bytearray_header = header.to_bytes(1, "big")
-    return r_bytearray_header
+    r_bytes_header = header.to_bytes(1, "big")
+    return r_bytes_header
 
 
 def split_received_msg(p_received_msg):
