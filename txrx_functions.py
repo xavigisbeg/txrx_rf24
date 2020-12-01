@@ -12,11 +12,7 @@ from txrx_utils import *
 # ----------- Constants Definition ----------- #
 LENGTH_OF_FRAMES = 31  # one byte is needed for the header
 NAME_OF_FILE = "text_file.txt"
-END_OF_TRANSMISSION = bytearray(b"The transmission is over now!!!")
-# END_OF_TRANSMISSION = bytearray(b"")
-EOT_MASK = 1 << 7
-CNT_MODULO = 4
-CNT_MASK = 0b11
+END_OF_TRANSMISSION = create_header(0, eot=True)
 
 # ----------- Radio set-up ----------- #
 RADIO = RF24(22, 0)  # 22: CE GPIO, 0: CSN GPIO, (SPI speed: 10 MHz)
@@ -107,10 +103,14 @@ def run_st_tx_create_frames():
         compressed_bytes = f.read()
 
     r_list_of_frames = list()
+    frame_num = 0
     while len(compressed_bytes) > 0:  # while there are still bytes to add to the list
         current_bytes = compressed_bytes[:LENGTH_OF_FRAMES]  # we take the first bytes up to the length
-        r_list_of_frames.append(bytearray(current_bytes))
+        header = create_header(frame_num)
+        r_list_of_frames.append(bytearray(header + current_bytes))
+
         compressed_bytes = compressed_bytes[LENGTH_OF_FRAMES:]  # we remove the bytes put in the list
+        frame_num += 1
 
     r_state = STATE_TX_TRANSMISSION_INIT
     return r_state, r_list_of_frames
@@ -143,16 +143,9 @@ def run_st_tx_transmission_init():
     return r_state, r_frame_num
 
 
-def create_header(p_frame_num, eot=False):
-    """ Create the message header with on the EOT bit and a counter on 4 bits based on the frame number """
-    header = EOT_MASK*eot + (p_frame_num % CNT_MODULO)
-    r_bytearray_header = bytearray(header.to_bytes(1, "big"))
-    return r_bytearray_header
-
-
 def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
     """ Send one frame from the list of frames """
-    frame_to_send = create_header(pr_frame_num) + p_list_of_frames[pr_frame_num]
+    frame_to_send = p_list_of_frames[pr_frame_num]
 
     if RADIO.write(frame_to_send):  # the frame was correctly sent
         pr_frame_num += 1
@@ -168,7 +161,7 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
 
 def run_st_tx_transmission_send_eot():
     """ Send the end of transmission """
-    frame_to_send = create_header(0, eot=True) + END_OF_TRANSMISSION
+    frame_to_send = END_OF_TRANSMISSION
     if RADIO.write(frame_to_send):  # the frame was correctly sent
         r_state = STATE_FINAL
     else:
@@ -201,16 +194,6 @@ def run_st_rx_transmission_init():
     return r_state, r_previous_cnt
 
 
-def split_received_msg(p_received_msg):
-    """ Remove the header from the received message and extract from it the EOT bit and the message counter """
-    r_received_payload = p_received_msg[1:]
-    header = int(p_received_msg[:1].hex(), 16)
-    r_eot = (header & EOT_MASK) >> 7
-    r_cnt = header & CNT_MASK
-    # print(f"header: {header:#011_b}, EOT: {r_eot:b}, counter: {r_cnt:06_b}")
-    return r_received_payload, r_eot, r_cnt
-
-
 def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload):
     """ Wait for a message """
     r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
@@ -220,12 +203,12 @@ def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload
         total_payload = bytes(RADIO.read(received_msg_length))
         received_payload, eot, cnt = split_received_msg(total_payload)
 
-        if eot and received_payload == END_OF_TRANSMISSION:
+        if eot:
             print(f"Received EOT: {received_payload}")
-            time.sleep(2)  # to be sure we send this last message ACK before stopping listening
-            RADIO.stopListening()
+            # time.sleep(2)  # to be sure we send this last message ACK before stopping listening
+            # RADIO.stopListening()
             r_state = STATE_RX_DECOMPRESS
-        elif cnt == (pr_previous_cnt + 1) % CNT_MODULO:  # test if we haven't twice the same message
+        elif cnt != pr_previous_cnt:  # test if we haven't twice the same message
             pr_previous_cnt = cnt
             print(f"Received packet ({len(pr_list_received_payload)}) \t{cnt:02b} "
                   f"\t{received_payload}")
@@ -268,6 +251,8 @@ def run_st_rx_copy_to_usb():
     cmd = "sudo cp " + NAME_OF_FILE + " " + os.path.join(USB_FOLDER, NAME_OF_FILE)
     print("\t > " + cmd)
     subprocess.call(cmd, shell=True)
+
+    RADIO.stopListening()
     r_state = STATE_FINAL
     return r_state
 

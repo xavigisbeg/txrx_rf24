@@ -155,3 +155,26 @@ def check_mounted_usb():  # TODO use USBmount, so the USB will be auto-mounted
         return False
     else:
         return False
+
+
+# --------------- Message Headers --------------- #
+EOT_MASK = 1 << 7
+CNT_MODULO = 4
+CNT_MASK = 0b11
+
+
+def create_header(p_frame_num, eot=False):
+    """ Create the message header with on the EOT bit and a counter on 4 bits based on the frame number """
+    header = EOT_MASK*eot + (p_frame_num % CNT_MODULO)
+    r_bytearray_header = header.to_bytes(1, "big")
+    return r_bytearray_header
+
+
+def split_received_msg(p_received_msg):
+    """ Remove the header from the received message and extract from it the EOT bit and the message counter """
+    r_received_payload = p_received_msg[1:]
+    header = int.from_bytes(p_received_msg[:1], "big")
+    r_eot = (header & EOT_MASK) >> 7
+    r_cnt = header & CNT_MASK
+    # print(f"header: {header:#011_b}, EOT: {r_eot:b}, counter: {r_cnt:06_b}")
+    return r_received_payload, r_eot, r_cnt
