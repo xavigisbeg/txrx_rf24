@@ -37,7 +37,6 @@ def ini_state_funtion(radio, p_role, p_pipes):
 def compress_file():
     with open('textfile.txt', "rb") as f:
         file = f.read()
-    print(len(file))
     p_file_content_c = zlib.compress(file, level=9)
     p_state = SENDER_SEND_STATE
     return p_state, p_file_content_c
@@ -49,7 +48,6 @@ def decompress_and_createFile(p_file_compressed):
             text_file.write(decompressed_bytes)
         p_decompress_OK = True
     except: # Catch error
-        print("Error decompression")
         p_decompress_OK = False
 
     p_state = RECEIVER_EOT_STATE
@@ -74,7 +72,7 @@ def  sender_reset_function(p_message_numeration):
 
 def sender_send_function(p_file_content_c, message_numeration):
     radio.stopListening()
-    print(len(p_file_content_c))
+    #print(len(p_file_content_c))
     if len(p_file_content_c) > 31:
         p_message = create_message(message_numeration, p_file_content_c)
         ACK = radio.write(p_message)
@@ -84,11 +82,8 @@ def sender_send_function(p_file_content_c, message_numeration):
             p_state = SENDER_SEND_STATE
     else: #EOF
         p_message = create_message(0, p_file_content_c)
-        ACK = radio.write(p_message)  # ONLY ONE TRY TO CATCH ACK......HOW TO SOLVE IT?? #########################################################################
-        if ACK == True:
-            p_state = SENDER_EOT_STATE
-        else:
-            p_state = SENDER_SEND_STATE
+        sender_EOF(p_message)
+        p_state = SENDER_EOT_STATE
 
     return p_state
 
@@ -107,6 +102,23 @@ def sender_receive_function(p_file_content_compressed, p_numeration):
     return state, p_file_content_compressed, p_numeration
 
 
+def sender_EOF(message):
+    done = False
+    counter = 0
+
+    print("Send EOF")
+    while done == False:
+        radio.stopListening()
+        time.sleep(0.1)
+        ACK = radio.write(message)
+        if ACK == True:
+            done = True
+        elif counter == 100: # Aprox 15 seconds of trying retransmissions
+            print("ERROR: ACK EOF")
+            done = True
+        counter += 1
+
+
 def sender_EOT():
     radio.startListening()
 
@@ -114,10 +126,11 @@ def sender_EOT():
     if radio.available():
         m = radio.getDynamicPayloadSize()
         received_message = radio.read(m)
-        print(received_message)
         if received_message == b"OK": # File correct
+            print("EOT --> File correct")
             p_state = FINAL_STATE
         else: # FIle corrupted - Retransmit
+            print("EOT --> Re-send")
             p_state = SENDER_RESET_STATE
 
     return p_state
@@ -139,8 +152,6 @@ def receiver_function(p_file_content_compressed, p_numeration, p_message_to_add)
     if radio.available():
         m = radio.getDynamicPayloadSize()
         received_message = radio.read(m)
-        print(received_message[0])
-        print(received_message)
         if received_message[0] != 0:
             if received_message[0] == p_numeration: # Correct expected
                 if message_to_add != b"":
@@ -150,10 +161,11 @@ def receiver_function(p_file_content_compressed, p_numeration, p_message_to_add)
                     p_numeration = 1
             p_message_to_add = received_message[1:31]
 
-        else: # EOF  # ONLY ONE TRY TO SEND ACK......HOW TO SOLVE IT?? #########################################################################
+        else: # EOF
             p_file_content_compressed += p_message_to_add
             p_file_content_compressed += received_message[1:]  ## To make the decompression file fail, comment this line #######################
             print("EOF received")
+            time.sleep(1)
             p_state = DECOMPRESS_STATE
     return p_state, p_file_content_compressed, p_numeration, p_message_to_add
 
@@ -168,17 +180,15 @@ def receiver_EOT(p_decompress_OK, p_ACK_EOT_counter):
         p_EOT_message = b"NOK"
 
     ACK = radio.write(p_EOT_message)
-    print("HIIII")
-    print(p_EOT_message)
     if ACK == True:
-        print("ACK EOT counter:")
-        print(p_ACK_EOT_counter)
         if p_decompress_OK == True:
+            print("EOT --> File correct")
             p_state = FINAL_STATE
         else:
+            print("EOT --> Re-send")
             p_state = RECEIVER_RESET_STATE
-    elif p_ACK_EOT_counter == 20: # Aprox 30 seconds of trying retransmissions
-        print("ACK EOT error")
+    elif p_ACK_EOT_counter == 200: # Aprox 30 seconds of trying retransmissions
+        print("ERROR: ACK EOT")
         if p_decompress_OK == True:
             p_state = FINAL_STATE
         else:
