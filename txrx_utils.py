@@ -37,12 +37,12 @@ STATE_NM = 15
 
 class Switches:
     def __init__(self):
-        self.start              = Switch(10)
-        self.en_transmission    = Switch(11)  # yet undefined
-        self.Tx                 = Switch(12)
-        self.SRI                = Switch(13)
-        self.MRM                = Switch(14)
-        self.NM                 = Switch(15)
+        self.start              = Switch(10)  # when to start (1) the whole program or stop it (0)
+        self.en_transmission    = Switch(11)  # to enable the transmission
+        self.Tx                 = Switch(12)  # transmitter (1) or receiver (0)
+        self.SRI                = Switch(13)  # Short Range Mode (1) or not (0)
+        self.MRM                = Switch(14)  # Mid Range Mode (1) or not (0)
+        self.NM                 = Switch(15)  # Network Mode (1) or not (0)
 
     def update_switches(self):
         self.start.read_switch()
