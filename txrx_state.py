@@ -44,7 +44,7 @@ def main():
 
         elif state == STATE_TX_CREATE_FRAMES_TO_SEND:
             state, tx_list_of_frames = run_st_tx_create_frames()
-            print("number of messages: ", len(tx_list_of_frames))
+            print(f"Number of messages: {len(tx_list_of_frames)}")
 
         elif state == STATE_TX_TRANSMISSION_INIT:
             state, tx_frame_num = run_st_tx_transmission_init()
