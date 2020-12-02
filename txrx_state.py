@@ -9,8 +9,10 @@ from txrx_functions import *
 def main():
     # Initialization of variables
     state = STATE_INIT
+
     tx_list_of_frames = [bytearray(b"")]
     tx_frame_num = 0
+
     rx_previous_cnt = -1
     rx_list_received_payload = list()
 
