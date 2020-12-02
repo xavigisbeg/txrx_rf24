@@ -312,8 +312,8 @@ def nm_network_mode():
         if False:
         # if started and time.time() - initial_time > delta_time:
             print("End Comms")
-
-            nm_write("Local_out_TEAM_B.txt", file_received)
+            if not first_node:
+                nm_write("Local_out_TEAM_B.txt", file_received)
 
             # if check_mounted_usb():
             #     nm_copy_to_usb("Local_out_TEAM_B.txt", "out_TEAM_B.txt")
