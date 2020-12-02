@@ -7,6 +7,7 @@ import zlib
 import RPi.GPIO as GPIO
 from RF24 import *
 from txrx_utils import *
+from NM_GENERAL import nm_initialisation_nrf24, nm_network_mode
 
 
 # ----------- Constants Definition ----------- #
@@ -17,11 +18,14 @@ END_OF_TRANSMISSION = create_header(0, eot=True)
 
 # ----------- Radio set-up ----------- #
 RADIO = RF24(22, 0)  # 22: CE GPIO, 0: CSN GPIO, (SPI speed: 10 MHz)
-PIPES = [0xF0F0F0F0E1, 0xF0F0F0F0D2]  # address of the pipes
+PIPES = [0xF0_F0_F0_F0_E1, 0xF0_F0_F0_F0_D2]  # address of the pipes
 
 # Set the IRQ pin. Disconnected by the moment (GPIO24)
 IRQ_GPIO_PIN = None
 # IRQ_GPIO_PIN = 24
+
+# ----------- Interface ----------- #
+# Inter = Interface()
 
 
 # ------------ Common state functions ------------ #
@@ -125,7 +129,7 @@ def common_transceiver_init():
     """ Initialize the common parameters for both the transmitter and the receiver """
     RADIO.begin()
 
-    RADIO.setPALevel(RF24_PA_MIN)  # RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH and RF24_PA_MAX
+    RADIO.setPALevel(RF24_PA_LOW)  # RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH and RF24_PA_MAX
     RADIO.setDataRate(RF24_1MBPS)  # RF24_250KBPS for 250kbs, RF24_1MBPS for 1Mbps, or RF24_2MBPS for 2Mbps
     RADIO.setRetries(1, 15)  # 1 -> delay from 0 up to 15 [(delay+1)*250 µs] (1-> 500µs),
     #                         15 -> retries number from 0 (no retries) up to 15
@@ -257,7 +261,9 @@ def run_st_rx_copy_to_usb():
 
 # ------------ Network Mode state functions ------------ #
 
-def run_st_network_mode():  # TODO
+def run_st_network_mode():
     """ Network Mode """
+    nm_initialisation_nrf24()
+    nm_network_mode()
     r_state = STATE_FINAL
     return r_state
