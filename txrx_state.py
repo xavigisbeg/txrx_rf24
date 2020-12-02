@@ -53,7 +53,7 @@ def main():
             state, tx_frame_num = run_st_tx_transmission_send_msg(tx_list_of_frames, tx_frame_num)
 
         elif state == STATE_TX_TRANSMISSION_SEND_EOT:
-            state, tx_frame_num = run_st_tx_transmission_send_eot()
+            state = run_st_tx_transmission_send_eot()
 
         # Receiver states
         elif state == STATE_RX_TRANSMISSION_INIT:
