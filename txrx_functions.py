@@ -167,19 +167,6 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
     return r_state, pr_frame_num
 
 
-def check_for_received_ok_msg(pr_state):
-    """ Change state if we receive a OK or NOK message """
-    if RADIO.available():
-        received_msg_length = RADIO.getDynamicPayloadSize()
-        bytearray_payload = RADIO.read(received_msg_length)
-        print(f"Received Message: {bytearray_payload}")
-        if bytearray_payload == OK_MESSAGE:
-            pr_state = STATE_FINAL
-        elif bytearray_payload == NOK_MESSAGE:
-            pr_state = STATE_TX_RESET
-    return pr_state
-
-
 def run_st_tx_transmission_send_eot():
     """ Send the end of transmission """
     r_frame_num = 0
@@ -187,13 +174,12 @@ def run_st_tx_transmission_send_eot():
     if RADIO.write(frame_to_send):  # the EOT was correctly sent
         r_state = STATE_TX_TRANSMISSION_SEND_EOT
         if not RADIO.available():
-            print("Empty payload")
+            print("Received empty ACK for the EOT")
         else:
             received_msg_length = RADIO.getDynamicPayloadSize()
             bytearray_payload = RADIO.read(received_msg_length)
-            if bytearray_payload == OK_MESSAGE:  # Transmission done
-                r_state = STATE_FINAL
-            elif bytearray_payload == NOK_MESSAGE:  # Reset transmission
+            if bytearray_payload == NOK_MESSAGE:  # Reset transmission
+                print("Received NOK, RESET TRANSMISSION")
                 r_frame_num = 0  # we start to send the first message
                 r_state = STATE_TX_TRANSMISSION_SEND_MSG
     else:
@@ -235,7 +221,7 @@ def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload
         received_payload, eot, cnt = split_received_msg(total_payload)
 
         if eot:
-            print(f"Received EOT: {received_payload}")
+            print(f"Received EOT")
             r_state = STATE_RX_DECOMPRESS
         elif cnt != pr_previous_cnt:  # test if we haven't twice the same message
             pr_previous_cnt = cnt
