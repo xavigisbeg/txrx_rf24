@@ -2,19 +2,24 @@
 
 from txrx_utils import *
 from txrx_functions import *
+import time
 
 
 # ------------ Main Function ------------ #
 
 def main():
+    print("Test on Receiver")
     # Initialization of variables
-    state = STATE_INIT
+    state = STATE_RX_TRANSMISSION_INIT
 
     tx_list_of_frames = [bytearray(b"")]
     tx_frame_num = 0
 
     rx_previous_cnt = -1
     rx_list_received_payload = list()
+
+    if os.path.exists(NAME_OF_INPUT_FILE):
+        os.remove(NAME_OF_INPUT_FILE)
 
     while True:
         # At any time we should return to the init state if the start switch is turned off
@@ -53,7 +58,7 @@ def main():
             state, tx_frame_num = run_st_tx_transmission_send_msg(tx_list_of_frames, tx_frame_num)
 
         elif state == STATE_TX_TRANSMISSION_SEND_EOT:
-            state, tx_frame_num = run_st_tx_transmission_send_eot()
+            state = run_st_tx_transmission_send_eot()
 
         # Receiver states
         elif state == STATE_RX_TRANSMISSION_INIT:
@@ -62,6 +67,26 @@ def main():
         elif state == STATE_RX_TRANSMISSION_RECEIVE_MSG:
             state, rx_previous_cnt, rx_list_received_payload = \
                 run_st_rx_transmission_receive_msg(rx_previous_cnt, rx_list_received_payload)
+
+            if state == STATE_RX_DECOMPRESS:  # Creation of the report
+                print("Reception done!!")
+                time.sleep(1)
+                RADIO.stopListening()
+                print(f"{len(rx_list_received_payload)} messages received.")
+
+                num = 0
+                name_of_file = "report_rx_"
+                while os.path.exists(name_of_file + str(num) + ".csv"):
+                    num += 1
+                name_of_file = name_of_file + str(num) + ".csv"
+
+                csv = "Number of received message; Received payload; Integer message\n"
+                for i in range(len(rx_list_received_payload)):
+                    csv += str(i) + "; " + str(rx_list_received_payload[i]) \
+                           + "; " + str(int(rx_list_received_payload[i].hex(), 16)) + "\n"
+                with open(name_of_file, "w") as f:
+                    f.write(csv)
+                exit(0)
 
         elif state == STATE_RX_DECOMPRESS:
             state = run_st_rx_decompress(rx_list_received_payload)
@@ -72,12 +97,6 @@ def main():
 
         elif state == STATE_RX_COPY_TO_USB:
             state = run_st_rx_copy_to_usb()
-
-        elif state == STATE_RX_SEND_NOK_MSG:
-            state, rx_list_received_payload, rx_previous_cnt = run_st_rx_send_nok_msg()
-
-        elif state == STATE_RX_SEND_OK_MSG:
-            state = run_st_rx_send_ok_msg()
 
         # Network Mode states
         elif state == STATE_NM:
