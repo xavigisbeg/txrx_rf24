@@ -164,6 +164,9 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
         if pr_frame_num < len(p_list_of_frames):  # still frames to send
             r_state = STATE_TX_TRANSMISSION_SEND_MSG
         else:  # no more frame to send
+            while RADIO.available():  # to flush the FIFO of ACK
+                received_msg_length = RADIO.getDynamicPayloadSize()
+                RADIO.read(received_msg_length)
             r_state = STATE_TX_TRANSMISSION_SEND_EOT  # we have to send the end of transmission
     else:
         print(f"Max number of retries reached {pr_frame_num}: {frame_to_send}")
@@ -173,7 +176,6 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
 
 def run_st_tx_transmission_send_eot():
     """ Send the end of transmission """
-    r_frame_num = 0
     frame_to_send = END_OF_TRANSMISSION
     if RADIO.write(frame_to_send):  # the EOT was correctly sent
         r_state = STATE_TX_TRANSMISSION_SEND_EOT
@@ -183,14 +185,16 @@ def run_st_tx_transmission_send_eot():
             received_msg_length = RADIO.getDynamicPayloadSize()
             bytearray_payload = RADIO.read(received_msg_length)
             if bytearray_payload == NOK_MESSAGE:  # Reset transmission
-                print("Received NOK, RESET TRANSMISSION")
-                r_frame_num = 0  # we start to send the first message
-                r_state = STATE_TX_TRANSMISSION_SEND_MSG
+                print("Received NOK for the EOT, RESET TRANSMISSION")
+                r_state = STATE_TX_COMPRESS  # We return to the compression state
+            elif bytearray_payload == OK_MESSAGE:  # End transmission
+                print("Received OK for the EOT, END TRANSMISSION")
+                r_state = STATE_FINAL
     else:
         print("Max number of retries reached: EOT")
         r_state = STATE_TX_TRANSMISSION_SEND_EOT
 
-    return r_state, r_frame_num
+    return r_state
 
 
 # ------------ Receiver state functions ------------ #
@@ -219,13 +223,13 @@ def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload
     """ Wait for a message """
     r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     if RADIO.available():
-        # while RADIO.available():  # empty the whole FIFO
         received_msg_length = RADIO.getDynamicPayloadSize()
         total_payload = bytes(RADIO.read(received_msg_length))
         received_payload, eot, cnt = split_received_msg(total_payload)
 
         if eot:
             print(f"Received EOT")
+            RADIO.stopListening()
             r_state = STATE_RX_DECOMPRESS
         elif cnt != pr_previous_cnt:  # test if we haven't twice the same message
             pr_previous_cnt = cnt
@@ -242,13 +246,53 @@ def run_st_rx_decompress(p_list_received_payload):
         decompressed_bytes = zlib.decompress(compressed_bytes, wbits=15)
     except zlib.error:
         print("ERROR IN DECOMPRESSION")
-        r_state = STATE_RX_SEND_NOK_MSG  # an error in decompression, send an NOK to reset the transmission
+        r_state = STATE_RX_TRANSMISSION_SEND_NOK_ACK  # an error in decompression, send an NOK to reset the transmission
+        RADIO.startListening()
+        RADIO.writeAckPayload(1, NOK_MESSAGE)  # send a NOK in the ACK payload to reset the transmission
         return r_state
 
     with open(NAME_OF_OUTPUT_FILE, "wb") as f:
         f.write(decompressed_bytes)
 
-    r_state = STATE_RX_MOUNT_USB
+    # r_state = STATE_RX_MOUNT_USB
+    r_state = STATE_RX_TRANSMISSION_SEND_OK_ACK
+    RADIO.startListening()
+    RADIO.writeAckPayload(1, OK_MESSAGE)  # send a OK in the ACK payload to validate the transmission
+    return r_state
+
+
+def run_st_rx_transmission_send_nok_ack():
+    """ Send a NOK message to reset the transmission """
+    r_state = STATE_RX_TRANSMISSION_SEND_NOK_ACK
+    r_list_received_payload = list()
+    r_previous_cnt = -1
+    if RADIO.available():
+        received_msg_length = RADIO.getDynamicPayloadSize()
+        total_payload = bytes(RADIO.read(received_msg_length))
+        received_payload, eot, cnt = split_received_msg(total_payload)
+
+        if eot:
+            print(f"Received EOT, we write a new NOK ack payload")
+            RADIO.writeAckPayload(1, NOK_MESSAGE)
+            r_state = STATE_RX_TRANSMISSION_SEND_NOK_ACK
+        else:  # the transmitter has already starts the transmission of the file
+            print("RESET TRANSMISSION")
+            print(f"Received packet ({0}) {received_payload}")
+            r_previous_cnt = cnt
+            r_list_received_payload = [received_payload]
+            r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
+
+    return r_state, r_list_received_payload, r_previous_cnt
+
+
+def run_st_rx_transmission_send_ok_ack():
+    """ Send a OK message to tell the transmitter that everything was fine """
+    if RADIO.available():
+        print(f"Received message, we write a new OK ack payload")
+        received_msg_length = RADIO.getDynamicPayloadSize()
+        RADIO.read(received_msg_length)
+        RADIO.writeAckPayload(1, OK_MESSAGE)
+    r_state = STATE_RX_TRANSMISSION_SEND_OK_ACK
     return r_state
 
 
@@ -272,55 +316,7 @@ def run_st_rx_copy_to_usb():
         r_state = STATE_RX_MOUNT_USB  # try to remount the USB
         return r_state
 
-    r_state = STATE_RX_SEND_OK_MSG
-    return r_state
-
-
-def run_st_rx_send_nok_msg():
-    """ Send a NOK message to reset the transmission """
-    RADIO.startListening()
-    if RADIO.available():  # the transmitter has already starts the transmission of the file
-        print("RESET TRANSMISSION")
-        received_msg_length = RADIO.getDynamicPayloadSize()
-        total_payload = bytes(RADIO.read(received_msg_length))
-        received_payload, eot, cnt = split_received_msg(total_payload)
-
-        r_list_received_payload = list()
-        r_previous_cnt = cnt
-        print(f"Received packet ({len(r_list_received_payload)}) {received_payload}")
-        r_list_received_payload.append(received_payload)
-        r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-
-    else:
-        frame_to_send = NOK_MESSAGE
-        RADIO.stopListening()
-        if RADIO.write(frame_to_send):  # the NOK was correctly sent, we reset the transmission
-            print("RESET TRANSMISSION")
-            RADIO.startListening()
-            r_list_received_payload = list()
-            r_previous_cnt = -1
-            r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
-        else:  # we stay in the same state
-            print("Max number of retries reached: NOK")
-            RADIO.startListening()
-            time.sleep(0.2)  # wait some time to receive a possible OK/NOK message
-            r_list_received_payload = list()
-            r_previous_cnt = -1
-            r_state = STATE_RX_SEND_NOK_MSG
-
-    return r_state, r_list_received_payload, r_previous_cnt
-
-
-def run_st_rx_send_ok_msg():
-    """ Send a OK message to tell the transmitter that everything was fine """
-    RADIO.stopListening()
-    frame_to_send = OK_MESSAGE
-    if RADIO.write(frame_to_send):  # the OK was correctly sent, we go to the final state
-        print("TRANSMISSION DONE")
-        r_state = STATE_FINAL
-    else:  # we stay in the same state
-        print("Max number of retries reached: OK")
-        r_state = STATE_RX_SEND_OK_MSG
+    r_state = STATE_RX_TRANSMISSION_SEND_OK_ACK
     return r_state
 
 

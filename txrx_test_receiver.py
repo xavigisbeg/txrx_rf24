@@ -20,6 +20,9 @@ def main():
 
     if os.path.exists(NAME_OF_INPUT_FILE):
         os.remove(NAME_OF_INPUT_FILE)
+    put_error = 0
+    get_time = False
+    init_time = time.time()
 
     while True:
         # At any time we should return to the init state if the start switch is turned off
@@ -68,9 +71,24 @@ def main():
             state, rx_previous_cnt, rx_list_received_payload = \
                 run_st_rx_transmission_receive_msg(rx_previous_cnt, rx_list_received_payload)
 
-            if state == STATE_RX_DECOMPRESS:  # Creation of the report
+        elif state == STATE_RX_DECOMPRESS:
+            if put_error < 2:  # we put twice an error in the decompression
+                print("We put an error")
+                rx_list_received_payload = rx_list_received_payload[:4] + rx_list_received_payload[5:]
+                put_error += 1
+            state = run_st_rx_decompress(rx_list_received_payload)
+
+        elif state == STATE_RX_TRANSMISSION_SEND_NOK_ACK:
+            state, rx_list_received_payload, rx_previous_cnt = run_st_rx_transmission_send_nok_ack()
+
+        elif state == STATE_RX_TRANSMISSION_SEND_OK_ACK:
+            state = run_st_rx_transmission_send_ok_ack()
+
+            if not get_time:  # a counter to stop after 10 seconds
+                init_time = time.time()
+            get_time = True
+            if time.time() - init_time > 10:  # Creation of the report
                 print("Reception done!!")
-                time.sleep(1)
                 RADIO.stopListening()
                 print(f"{len(rx_list_received_payload)} messages received.")
 
@@ -87,9 +105,6 @@ def main():
                 with open(name_of_file, "w") as f:
                     f.write(csv)
                 exit(0)
-
-        elif state == STATE_RX_DECOMPRESS:
-            state = run_st_rx_decompress(rx_list_received_payload)
 
         elif state == STATE_RX_MOUNT_USB:
             # stuck here until the USB is detected and mounted

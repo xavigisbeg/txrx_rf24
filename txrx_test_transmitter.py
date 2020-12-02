@@ -12,8 +12,7 @@ import os
 def main():
     print("Test on Transmitter")
     # Initialization of variables
-    # state = STATE_TX_COMPRESS
-    state = STATE_TX_CREATE_FRAMES_TO_SEND
+    state = STATE_TX_COMPRESS
 
     tx_list_of_frames = [bytearray(b"")]
     tx_frame_num = 0
@@ -54,11 +53,7 @@ def main():
             state = run_st_tx_compress()
 
         elif state == STATE_TX_CREATE_FRAMES_TO_SEND:
-            # state, tx_list_of_frames = run_st_tx_create_frames()
-
-            tx_list_of_frames = [create_header(i) + i.to_bytes(31, "big") for i in range(10_000)]
-            state = STATE_TX_TRANSMISSION_INIT
-
+            state, tx_list_of_frames = run_st_tx_create_frames()
             print(f"Number of messages: {len(tx_list_of_frames)}")
 
         elif state == STATE_TX_TRANSMISSION_INIT:
@@ -108,6 +103,12 @@ def main():
 
         elif state == STATE_RX_DECOMPRESS:
             state = run_st_rx_decompress(rx_list_received_payload)
+
+        elif state == STATE_RX_TRANSMISSION_SEND_NOK_ACK:
+            state, rx_list_received_payload, rx_previous_cnt = run_st_rx_transmission_send_nok_ack()
+
+        elif state == STATE_RX_TRANSMISSION_SEND_OK_ACK:
+            state = run_st_rx_transmission_send_ok_ack()
 
         elif state == STATE_RX_MOUNT_USB:
             # stuck here until the USB is detected and mounted

@@ -66,18 +66,18 @@ def main():
         elif state == STATE_RX_DECOMPRESS:
             state = run_st_rx_decompress(rx_list_received_payload)
 
+        elif state == STATE_RX_TRANSMISSION_SEND_NOK_ACK:
+            state, rx_list_received_payload, rx_previous_cnt = run_st_rx_transmission_send_nok_ack()
+
+        elif state == STATE_RX_TRANSMISSION_SEND_OK_ACK:
+            state = run_st_rx_transmission_send_ok_ack()
+
         elif state == STATE_RX_MOUNT_USB:
             # stuck here until the USB is detected and mounted
             state = run_st_rx_mount_usb()
 
         elif state == STATE_RX_COPY_TO_USB:
             state = run_st_rx_copy_to_usb()
-
-        elif state == STATE_RX_SEND_NOK_MSG:
-            state, rx_list_received_payload, rx_previous_cnt = run_st_rx_send_nok_msg()
-
-        elif state == STATE_RX_SEND_OK_MSG:
-            state = run_st_rx_send_ok_msg()
 
         # Network Mode states
         elif state == STATE_NM:
