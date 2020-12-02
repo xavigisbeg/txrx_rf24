@@ -26,6 +26,8 @@ def main():
     temp_cnt_retries = 0
     t1 = time.time()
 
+    init_time = time.time()
+
     while True:
         # At any time we should return to the init state if the start switch is turned off
         if state != STATE_INIT:
@@ -77,7 +79,8 @@ def main():
             state = run_st_tx_transmission_send_eot()
 
             if state == STATE_FINAL:  # Creation of the report
-                print("Transmission done!!")
+                print("\nTransmission done!!")
+                print(f"in {time.time() - init_time:.2f} seconds")
 
                 num = 0
                 name_of_file = "report_tx_"

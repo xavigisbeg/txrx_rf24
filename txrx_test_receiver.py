@@ -18,11 +18,11 @@ def main():
     rx_previous_cnt = -1
     rx_list_received_payload = list()
 
-    if os.path.exists(NAME_OF_INPUT_FILE):
-        os.remove(NAME_OF_INPUT_FILE)
+    init_time = time.time()
+
     put_error = 0
     get_time = False
-    init_time = time.time()
+    init_wait_time = time.time()
 
     while True:
         # At any time we should return to the init state if the start switch is turned off
@@ -85,10 +85,12 @@ def main():
             state = run_st_rx_transmission_send_ok_ack()
 
             if not get_time:  # a counter to stop after 10 seconds
-                init_time = time.time()
-            get_time = True
-            if time.time() - init_time > 10:  # Creation of the report
-                print("Reception done!!")
+                init_wait_time = time.time()
+                get_time = True
+            if time.time() - init_wait_time > 10:  # Creation of the report
+                print("\nReception done!!")
+                print(f"in {time.time() - init_time:.2f} seconds")
+                time.sleep(1)
                 RADIO.stopListening()
                 print(f"{len(rx_list_received_payload)} messages received.")
 
