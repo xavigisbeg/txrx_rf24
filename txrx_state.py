@@ -55,7 +55,7 @@ def main():
 
         # Receiver states
         elif state == STATE_RX_TRANSMISSION_INIT:
-            state, rx_previous_cnt = run_st_rx_transmission_init()
+            state, rx_list_received_payload, rx_previous_cnt = run_st_rx_transmission_init()
 
         elif state == STATE_RX_TRANSMISSION_RECEIVE_MSG:
             state, rx_previous_cnt, rx_list_received_payload = \
