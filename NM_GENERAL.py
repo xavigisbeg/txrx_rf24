@@ -52,7 +52,7 @@ def nm_initialisation_nrf24():
     #                         15 -> retries number from 0 (no retries) up to 15
     RADIO.setAutoAck(False)  # Enable auto-acknowledgement
     RADIO.enableDynamicPayloads()  # Enable dynamic-sized payloads
-    RADIO.setChannel(83)  # RF channel to communicate on: 0-125
+    RADIO.setChannel(1)  # RF channel to communicate on: 0-125
     RADIO.setCRCLength(RF24_CRC_16)  # RF24_CRC_8 for 8-bit or RF24_CRC_16 for 16-bit
 
     RADIO.setAddressWidth(5)
@@ -164,8 +164,7 @@ def nm_network_mode():
 
     number_packets_total = 35  # Number of packets in case the file is bigger than expected
     file_received = bytearray(number_packets_total * DATA_SIZE)  # Where we put the data received
-    file_to_transmit = bytearray(
-        number_packets_total * (DATA_SIZE + HEADERS_SIZE))  # Where we put the data to transmit (with flags)
+    file_to_transmit = bytearray(number_packets_total * (DATA_SIZE + HEADERS_SIZE))  # Where we put the data to transmit (with flags)
     time_slot = 0  # Time to start to transmit
     synchronized = False  # Boolean to indicate if I am synchronized
 
@@ -213,17 +212,13 @@ def nm_network_mode():
 
                 # ------  DATA PREPARATION  ------ #
                 # TO BE PRINTED IN TXT FILE
-                file_received[
-                packet_id_received * DATA_SIZE:packet_id_received * DATA_SIZE + payload_size_received] = buffer[
-                                                                                                         2:payload_size_received + 2]
+                file_received[packet_id_received * DATA_SIZE:packet_id_received * DATA_SIZE + payload_size_received] = buffer[2:payload_size_received + 2]
 
                 # TO BE TRANSMITTED INTO THE NEXT TIME_SLOTS OF THIS NODE_ID
                 control_byte_integer_1 = (NODE_ID << 5) + packet_id_received
                 empty_data = b'~' * (DATA_SIZE - payload_size_received)  # Add redundant data to get 32 byte payload
-                buffer = bytes([control_byte_integer_1]) + bytes([control_byte_integer_2]) + buffer[
-                                                                                             2:payload_size_received + 2] + empty_data
-                file_to_transmit[packet_id_received * (DATA_SIZE + HEADERS_SIZE): (packet_id_received + 1) * (
-                            DATA_SIZE + HEADERS_SIZE)] = buffer
+                buffer = bytes([control_byte_integer_1]) + bytes([control_byte_integer_2]) + buffer[2:payload_size_received + 2] + empty_data
+                file_to_transmit[packet_id_received*(DATA_SIZE + HEADERS_SIZE): (packet_id_received + 1) * (DATA_SIZE + HEADERS_SIZE)] = buffer
 
                 # ------  NETWORK CONFIGURATION UPDATE  ------ #
                 if last_packet_received:
