@@ -17,8 +17,10 @@ NAME_OF_OUTPUT_FILE = "groupB_output_text_file.txt"
 END_OF_TRANSMISSION = create_header(0, eot=True)
 
 # ----------- Radio set-up ----------- #
+# RADIO = RF24(22, 0, 1_000_000)  # 22: CE GPIO, 0: CSN GPIO, SPI speed: 1 MHz
+# RADIO = RF24(22, 0, 5_000_000)  # 22: CE GPIO, 0: CSN GPIO, SPI speed: 5 MHz
 RADIO = RF24(22, 0)  # 22: CE GPIO, 0: CSN GPIO, (SPI speed: 10 MHz)
-PIPES = [0xF0_F0_F0_F0_E1, 0xF0_F0_F0_F0_D2]  # address of the pipes
+PIPES = [0xBB_BB_BB_BB_B0, 0xBB_BB_BB_BB_B1]  # address of the pipes
 
 # Set the IRQ pin. Disconnected by the moment (GPIO24)
 IRQ_GPIO_PIN = None
