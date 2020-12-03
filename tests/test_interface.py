@@ -20,12 +20,12 @@ class Switches:
 
 class Switch:
     def __init__(self, p_pin):
-        GPIO.setup(p_pin, GPIO.IN)
+        GPIO.setup(p_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         self.pin = p_pin
         self.value = GPIO.input(p_pin)
 
     def read_switch(self):
-        self.value = not GPIO.input(self.pin)  # TODO: might be inverted
+        self.value = GPIO.input(self.pin)  # TODO: might be inverted
 
     def is_on(self):
         self.read_switch()
@@ -121,3 +121,18 @@ def test_interface():
 
 if __name__ == "__main__":
     test_interface()
+
+
+"""import RPi.GPIO as GPIO
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup([13, 29, 31, 33, 35, 37], GPIO.OUT)
+GPIO.setup([7, 5, 3, 8, 10, 12], GPIO.IN)
+GPIO.output([13, 29, 31, 33, 35, 37], GPIO.HIGH)
+GPIO.output([13, 29, 31, 33, 35, 37], GPIO.LOW)
+def update():
+    a = []
+    for i in [7, 5, 3, 8, 10, 12]:
+        a.append(GPIO.input(i))
+    return a
+"""
