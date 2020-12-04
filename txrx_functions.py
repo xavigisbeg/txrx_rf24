@@ -84,7 +84,7 @@ def run_st_tx_copy_from_usb():
             txt_file_exist = True
             print("The USB contains the .txt file: " + file)
             # if file == input_file:  # to verify this is the proper file in the proper mode
-            # TODO: decide if we do this check, and return possibly to the reading of switches
+            # TODO: decide if we do this check, and return possibly to the reading of switches if fail
             cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + input_file
             print("\t > " + cmd)
             try:
