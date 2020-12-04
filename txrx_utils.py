@@ -37,12 +37,12 @@ STATE_NM = 15
 
 class Switches:
     def __init__(self):
-        self.start              = Switch(10)  # when to start (1) the whole program or stop it (0)
-        self.en_transmission    = Switch(11)  # to enable the transmission
-        self.Tx                 = Switch(12)  # transmitter (1) or receiver (0)
-        self.SRI                = Switch(13)  # Short Range Mode (1) or not (0)
-        self.MRM                = Switch(14)  # Mid Range Mode (1) or not (0)
-        self.NM                 = Switch(15)  # Network Mode (1) or not (0)
+        self.start              = Switch(7)  # when to start (1) the whole program or stop it (0)
+        self.en_transmission    = Switch(5)  # to enable the transmission
+        self.Tx                 = Switch(3)  # transmitter (1) or receiver (0)
+        self.SRI                = Switch(8)  # Short Range Mode (1) or not (0)
+        self.MRM                = Switch(10)  # Mid Range Mode (1) or not (0)
+        self.NM                 = Switch(12)  # Network Mode (1) or not (0)
 
     def update_switches(self):
         self.start.read_switch()
@@ -55,7 +55,7 @@ class Switches:
 
 class Switch:
     def __init__(self, p_pin):
-        GPIO.setup(p_pin, GPIO.IN)
+        GPIO.setup(p_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         self.pin = p_pin
         self.value = GPIO.input(p_pin)
 
@@ -72,12 +72,12 @@ class Switch:
 
 class LEDs:
     def __init__(self):
-        self.start   = LED(16)
-        self.mounted = LED(17)
-        self.Tx      = LED(18)
-        self.SRI     = LED(19)
-        self.MRM     = LED(20)
-        self.NM      = LED(21)
+        self.start   = LED(13)  # far left
+        self.mounted = LED(29)
+        self.Tx      = LED(31)
+        self.SRI     = LED(33)
+        self.MRM     = LED(35)
+        self.NM      = LED(37)  # far-right
 
 
 class LED:
