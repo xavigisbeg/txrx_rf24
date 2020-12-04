@@ -21,6 +21,18 @@ def main():
         if state != STATE_INIT:
             state = run_st_read_start_switch(state)
 
+        # At any time in transmission in TX, if the enable transmission switch is turned off
+        # we go to the final state
+        if state in [STATE_TX_TRANSMISSION_INIT, STATE_TX_TRANSMISSION_SEND_MSG, STATE_TX_TRANSMISSION_SEND_EOT]:
+            state = run_st_tx_read_transmission_enable_switch(state)
+
+        # At any time in transmission in RX, if the enable transmission switch is turned off
+        # if the file was received successfully, we go to the USB mount state
+        # else, we go to the final state
+        if state in [STATE_RX_TRANSMISSION_INIT, STATE_RX_TRANSMISSION_RECEIVE_MSG,
+                     STATE_RX_TRANSMISSION_SEND_NOK_ACK, STATE_RX_TRANSMISSION_SEND_OK_ACK]:
+            state = run_st_rx_read_transmission_enable_switch(state)
+
         # Common states
         if state == STATE_FINAL:
             pass  # In the final state, we are stuck (unless the start switch if turned OFF)
@@ -46,6 +58,10 @@ def main():
             state, tx_list_of_frames = run_st_tx_create_frames()
             print(f"Number of messages: {len(tx_list_of_frames)}")
 
+        elif state == STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE:
+            # stuck here until the enable transmission switch is ON
+            state = run_st_tx_read_transmission_enable_switch(state)
+
         elif state == STATE_TX_TRANSMISSION_INIT:
             state, tx_frame_num = run_st_tx_transmission_init()
 
@@ -56,6 +72,10 @@ def main():
             state = run_st_tx_transmission_send_eot()
 
         # Receiver states
+        elif state == STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE:
+            # stuck here until the enable transmission switch is ON
+            state = run_st_rx_read_transmission_enable_switch(state)
+
         elif state == STATE_RX_TRANSMISSION_INIT:
             state, rx_list_received_payload, rx_previous_cnt = run_st_rx_transmission_init()
 

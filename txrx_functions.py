@@ -12,8 +12,8 @@ from NM_GENERAL import nm_initialisation_nrf24, nm_network_mode
 
 # ----------- Constants Definition ----------- #
 LENGTH_OF_FRAMES = 31  # one byte is needed for the header
-NAME_OF_INPUT_FILE = "groupB_input_text_file.txt"
-NAME_OF_OUTPUT_FILE = "groupB_output_text_file.txt"
+NAME_OF_INPUT_FILE = ["MTP-F20-", "-B-TX.txt"]
+NAME_OF_OUTPUT_FILE = ["MTP-F20-", "-B-RX.txt"]
 END_OF_TRANSMISSION = create_header(0, eot=True)
 OK_MESSAGE = bytearray(b"OK")
 NOK_MESSAGE = bytearray(b"NOK")
@@ -28,15 +28,12 @@ PIPES = [0xBB_BB_BB_BB_B0, 0xBB_BB_BB_BB_B1]  # address of the pipes
 IRQ_GPIO_PIN = None
 # IRQ_GPIO_PIN = 24
 
-# ----------- Interface ----------- #
-# Inter = Interface()
-
 
 # ------------ Common state functions ------------ #
 
 def run_st_read_start_switch(pr_state):
     """ Read the start switch """
-    start_switch = True  # TODO function to read the start switch
+    start_switch = I_FACE.sw.start.is_on()
     if pr_state == STATE_INIT:
         if start_switch:  # if the start switch is ON
             pr_state = STATE_READ_SWITCHES  # we start the process
@@ -48,15 +45,19 @@ def run_st_read_start_switch(pr_state):
 
 def run_st_read_switches():
     """ Read the switches for the Network Mode and the TX/RX """
-    network_mode_switch = False  # TODO function to read the Network Mode switch
-    tx_switch = False  # TODO function to read the TX/RX switch # to change to set to transmitter or receiver
-    if network_mode_switch:
-        r_state = STATE_NM
-    else:  # Individual Modes
-        if tx_switch:  # transmitter
-            r_state = STATE_TX_MOUNT_USB
-        else:  # receiver
-            r_state = STATE_RX_TRANSMISSION_INIT
+    I_FACE.sw.update_switches()  # we update all the switches
+    mode = I_FACE.get_mode()
+    if mode:  # a mode was selected
+        if mode == "NM":
+            r_state = STATE_NM
+        else:  # Individual Modes, SRI or MRM
+            tx_switch = I_FACE.sw.Tx.was_on()
+            if tx_switch:  # transmitter
+                r_state = STATE_TX_MOUNT_USB
+            else:  # receiver
+                r_state = STATE_RX_TRANSMISSION_INIT
+    else:  # no proper mode was selected, we read the switches again
+        r_state = STATE_READ_SWITCHES
     return r_state
 
 
@@ -74,12 +75,17 @@ def run_st_tx_mount_usb():
 
 def run_st_tx_copy_from_usb():
     """ Copy the .txt file from the usb to the working directory under the name NAME_OF_FILE """
+    mode = I_FACE.get_mode()
+    input_file = mode.join(NAME_OF_INPUT_FILE)
+
     txt_file_exist = False
     for file in os.listdir(USB_FOLDER):
         if os.path.splitext(file)[1] == ".txt":
             txt_file_exist = True
             print("The USB contains the .txt file: " + file)
-            cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + NAME_OF_INPUT_FILE
+            # if file == input_file:  # to verify this is the proper file in the proper mode
+            # TODO: decide if we do this check, and return possibly to the reading of switches
+            cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + input_file
             print("\t > " + cmd)
             try:
                 subprocess.check_call(cmd, shell=True)
@@ -97,13 +103,16 @@ def run_st_tx_copy_from_usb():
 
 def run_st_tx_compress():
     """ Open the .txt file in the working directory under the name NAME_OF_FILE and compress it """
-    with open(NAME_OF_INPUT_FILE, "rb") as f:
+    mode = I_FACE.get_mode()
+    input_file = mode.join(NAME_OF_INPUT_FILE)
+
+    with open(input_file, "rb") as f:
         text_bytes = f.read()
 
     compressed_bytes = zlib.compress(text_bytes, level=9)
 
     # We save the compressed bytes inside a new file
-    with open("compressed_" + NAME_OF_INPUT_FILE, "wb") as f:
+    with open("compressed_" + input_file, "wb") as f:
         f.write(compressed_bytes)
 
     r_state = STATE_TX_CREATE_FRAMES_TO_SEND
@@ -112,7 +121,10 @@ def run_st_tx_compress():
 
 def run_st_tx_create_frames():
     """ Create a list of bytearray to be sent, each of length LENGTH_OF_FRAMES """
-    with open("compressed_" + NAME_OF_INPUT_FILE, "rb") as f:
+    mode = I_FACE.get_mode()
+    input_file = mode.join(NAME_OF_INPUT_FILE)
+
+    with open("compressed_" + input_file, "rb") as f:
         compressed_bytes = f.read()
 
     r_list_of_frames = list()
@@ -125,8 +137,22 @@ def run_st_tx_create_frames():
         compressed_bytes = compressed_bytes[LENGTH_OF_FRAMES:]  # we remove the bytes put in the list
         frame_num += 1
 
-    r_state = STATE_TX_TRANSMISSION_INIT
+    r_state = STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE
     return r_state, r_list_of_frames
+
+
+def run_st_tx_read_transmission_enable_switch(pr_state):
+    """ Read the enable transmission switch in TX mode """
+    en_transmission_switch = I_FACE.sw.en_transmission.is_on()
+    if pr_state == STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE:
+        if en_transmission_switch:  # if the en_transmission switch is ON
+            pr_state = STATE_TX_TRANSMISSION_INIT  # we start the transmission
+    else:
+        if not en_transmission_switch:  # if at anytime in transmission the en_transmission switch is OFF
+            # TODO: decide the behavior
+            pr_state = STATE_FINAL  # we go to the final state
+            # pr_state = STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE  # we return to the waiting state for transmission
+    return pr_state
 
 
 def common_transceiver_init():
@@ -201,6 +227,26 @@ def run_st_tx_transmission_send_eot():
 
 # ------------ Receiver state functions ------------ #
 
+def run_st_rx_read_transmission_enable_switch(pr_state):
+    """ Read the enable transmission switch in RX mode """
+    mode = I_FACE.get_mode()
+    output_file = mode.join(NAME_OF_OUTPUT_FILE)
+
+    en_transmission_switch = I_FACE.sw.en_transmission.is_on()
+    if pr_state == STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE:
+        if en_transmission_switch:  # if the en_transmission switch is ON
+            pr_state = STATE_RX_TRANSMISSION_INIT  # we start the transmission
+    else:
+        if not en_transmission_switch:  # if at anytime in transmission the en_transmission switch is OFF
+            if os.path.exists(output_file):
+                pr_state = STATE_RX_MOUNT_USB  # we go to the USB mount state
+            else:
+                # TODO: decide the behavior
+                # pr_state = STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE  # we return to the waiting state for transmission
+                pr_state = STATE_FINAL  # we go to the final state
+    return pr_state
+
+
 def run_st_rx_transmission_init():
     """ Initialize the receiver and the object radio """
     common_transceiver_init()
@@ -242,6 +288,9 @@ def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload
 
 def run_st_rx_decompress(p_list_received_payload):
     """ Decompress the received frames """
+    mode = I_FACE.get_mode()
+    output_file = mode.join(NAME_OF_OUTPUT_FILE)
+
     compressed_bytes = b"".join(p_list_received_payload)
 
     try:
@@ -253,10 +302,9 @@ def run_st_rx_decompress(p_list_received_payload):
         RADIO.writeAckPayload(1, NOK_MESSAGE)  # send a NOK in the ACK payload to reset the transmission
         return r_state
 
-    with open(NAME_OF_OUTPUT_FILE, "wb") as f:
+    with open(output_file, "wb") as f:
         f.write(decompressed_bytes)
 
-    # r_state = STATE_RX_MOUNT_USB
     r_state = STATE_RX_TRANSMISSION_SEND_OK_ACK
     RADIO.startListening()
     RADIO.writeAckPayload(1, OK_MESSAGE)  # send a OK in the ACK payload to validate the transmission
@@ -310,7 +358,10 @@ def run_st_rx_mount_usb():
 
 def run_st_rx_copy_to_usb():
     """ Copy the .txt file from the working directory to the usb """
-    cmd = "sudo cp " + NAME_OF_OUTPUT_FILE + " " + os.path.join(USB_FOLDER, NAME_OF_OUTPUT_FILE)
+    mode = I_FACE.get_mode()
+    output_file = mode.join(NAME_OF_OUTPUT_FILE)
+
+    cmd = "sudo cp " + output_file + " " + os.path.join(USB_FOLDER, output_file)
     print("\t > " + cmd)
     try:
         subprocess.check_call(cmd, shell=True)
@@ -318,7 +369,7 @@ def run_st_rx_copy_to_usb():
         r_state = STATE_RX_MOUNT_USB  # try to remount the USB
         return r_state
 
-    r_state = STATE_RX_TRANSMISSION_SEND_OK_ACK
+    r_state = STATE_FINAL
     return r_state
 
 

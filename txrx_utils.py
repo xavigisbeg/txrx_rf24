@@ -16,31 +16,33 @@ STATE_FINAL         = 0
 STATE_INIT          = 1
 STATE_READ_SWITCHES = 2
 
-STATE_TX_MOUNT_USB             = 10
-STATE_TX_COPY_FROM_USB         = 11
-STATE_TX_COMPRESS              = 12
-STATE_TX_CREATE_FRAMES_TO_SEND = 13
-STATE_TX_TRANSMISSION_INIT     = 14
-STATE_TX_TRANSMISSION_SEND_MSG = 15
-STATE_TX_TRANSMISSION_SEND_EOT = 16
+STATE_TX_MOUNT_USB                    = 10
+STATE_TX_COPY_FROM_USB                = 11
+STATE_TX_COMPRESS                     = 12
+STATE_TX_CREATE_FRAMES_TO_SEND        = 13
+STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE = 14
+STATE_TX_TRANSMISSION_INIT            = 15
+STATE_TX_TRANSMISSION_SEND_MSG        = 16
+STATE_TX_TRANSMISSION_SEND_EOT        = 17
 
-STATE_RX_TRANSMISSION_INIT         = 20
-STATE_RX_TRANSMISSION_RECEIVE_MSG  = 21
-STATE_RX_DECOMPRESS                = 22
-STATE_RX_TRANSMISSION_SEND_NOK_ACK = 23
-STATE_RX_TRANSMISSION_SEND_OK_ACK  = 24
-STATE_RX_MOUNT_USB                 = 25
-STATE_RX_COPY_TO_USB               = 26
+STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE = 20
+STATE_RX_TRANSMISSION_INIT            = 21
+STATE_RX_TRANSMISSION_RECEIVE_MSG     = 22
+STATE_RX_DECOMPRESS                   = 23
+STATE_RX_TRANSMISSION_SEND_NOK_ACK    = 24
+STATE_RX_TRANSMISSION_SEND_OK_ACK     = 25
+STATE_RX_MOUNT_USB                    = 26
+STATE_RX_COPY_TO_USB                  = 27
 
 STATE_NM = 30
 
 
-# --------------- Interface  ---------------- #
+# --------------- Interface Class Definition  ---------------- #
 
 class Switches:
     def __init__(self):
         self.start              = Switch(7)  # when to start (1) the whole program or stop it (0)
-        self.en_transmission    = Switch(5)  # to enable the transmission
+        self.en_transmission    = Switch(5)  # to enable the transmission (1) or stop it (0)
         self.Tx                 = Switch(3)  # transmitter (1) or receiver (0)
         self.SRI                = Switch(8)  # Short Range Mode (1) or not (0)
         self.MRM                = Switch(10)  # Mid Range Mode (1) or not (0)
@@ -103,20 +105,20 @@ class Interface:
         self.led = LEDs()
         self._mode = None
 
-    def get_mode(self):  # TODO: Decide if mode is updated anytime, so it happens every update and remove first line
-        self.update()
-        if self.sw.SRI.is_on() and not any([self.sw.MRM.is_on(), self.sw.NM.is_on()]):
+    def get_mode(self):
+        """ Returns the mode we're in, using the old position of the switches """
+        if self.sw.SRI.was_on() and not any([self.sw.MRM.was_on(), self.sw.NM.was_on()]):
             self._mode = "SRI"
-        elif self.sw.MRM.is_on() and not any([self.sw.SRI.is_on(), self.sw.NM.is_on()]):
+        elif self.sw.MRM.was_on() and not any([self.sw.SRI.was_on(), self.sw.NM.was_on()]):
             self._mode = "MRM"
-        elif self.sw.NM.is_on() and not any([self.sw.SRI.is_on(), self.sw.MRM.is_on()]):
+        elif self.sw.NM.was_on() and not any([self.sw.SRI.was_on(), self.sw.MRM.was_on()]):
             self._mode = "NM"
         else:
             self._mode = None
         return self._mode
 
     def update(self):
-        """Updates all switch values and sets LEDs, does not change mode"""
+        """ Updates all switch values and sets LEDs, does not change mode """
         self.sw.update_switches()
 
         if self.sw.start.is_on(): self.led.start.on()  # TODO: Enable and start combined usage
@@ -133,6 +135,10 @@ class Interface:
 
         if self.sw.NM.is_on(): self.led.NM.on()
         else: self.led.NM.off()
+
+
+# ----------- Interface Initialisation ----------- #
+I_FACE = Interface()
 
 
 # --------------- USB Management  ---------------- #
@@ -166,7 +172,7 @@ CNT_MASK = 0b11
 
 
 def create_header(p_frame_num, eot=False):
-    """ Create the message header with on the EOT bit and a counter on 4 bits based on the frame number """
+    """ Create the message header with on the EOT bit and a counter on 2 bits based on the frame number """
     header = EOT_MASK*eot + (p_frame_num & CNT_MASK)
     r_bytes_header = header.to_bytes(1, "big")
     return r_bytes_header
@@ -178,5 +184,4 @@ def split_received_msg(p_received_msg):
     header = int.from_bytes(p_received_msg[:1], "big")
     r_eot = (header & EOT_MASK) >> EOT_BIT
     r_cnt = header & CNT_MASK
-    # print(f"header: {header:#011_b}, EOT: {r_eot:b}, counter: {r_cnt:06_b}")
     return r_received_payload, r_eot, r_cnt

@@ -7,13 +7,6 @@ import time
 import os
 import math
 import numpy
-# import board
-# import digitalio as dio
-# from gpiozero import LED,Button
-# import struct
-# import logging
-# from circuitpython_nrf24l01.rf24 import RF24
-# from glob import glob # To search
 
 from RF24 import *
 from txrx_utils import *
@@ -25,7 +18,7 @@ from txrx_utils import *
 # ----------- Radio set-up ----------- #
 RADIO = RF24(22, 0)  # 22: CE GPIO, 0: CSN GPIO, (SPI speed: 10 MHz)
 
-# ------ NETWORK MODE ------ #
+# ----------- NETWORK MODE ----------- #
 NODE_ID = 1  # 1 and 5 --------------------------------------- to change
 # NODE_ID = 5  # 1 and 5 --------------------------------------- to change
 DATA_SIZE = 30  # Real payload data size
@@ -34,8 +27,8 @@ ADDRESS = 0xC2_C2_C2_C2_C2
 TIME_SLOT_SIZE = 1.75
 NUMBER_OF_NODES = 8
 MINIMUM_TIME_TRANSMISSION = 50  # ms taken to transmit each packet (minimum period)
-
-first_node = False
+NAME_OF_INPUT_FILE = "MTP-F20-NM-TX.txt"
+NAME_OF_OUTPUT_FILE = "MTP-F20-NM-RX.txt"
 
 
 ####################################################################
@@ -159,9 +152,6 @@ def nm_network_mode():
     """ PUBLIC WITH REQUIRED MODIFICATIONS!
     This function must be introduced in the main. It is the main function for the network mode operation """
     print("Mode NM")
-    # initial_time = time.time()
-    # delta_time = 3 * 60
-
     print("STATE: SILENCED")
 
     number_packets_total = 35  # Number of packets in case the file is bigger than expected
@@ -237,15 +227,12 @@ def nm_network_mode():
         # ------------------  FIRST TRANSMITTER  ------------------ #
         # At this point, the first transmitter switches from SILENCED to SYNCHRONIZED
         # and transmits in his time_slot (FIRST TRANSMITTER)
-        # if button_1.is_pressed and not started:  # ----------------------------------------------------TO BE MODIFIED
-        # if False:
-        if first_node and not started:
+        if I_FACE.sw.en_transmission.is_on() and not started:  # TODO: TO VERIFY
 
             # ------  READ DATA FROM USB  ------ #
-            # if check_mounted_usb():
-            if True:
-                # file_received = nm_read_from_usb()  # All info saved in file_received
-                file_received = nm_read_from_folder()  # All info saved in file_received
+            if check_mounted_usb():
+                file_received = nm_read_from_usb()  # All info saved in file_received
+                # file_received = nm_read_from_folder()  # All info saved in file_received
 
                 number_packets_total = math.ceil(len(file_received) / DATA_SIZE)
 
@@ -305,15 +292,12 @@ def nm_network_mode():
 
         # ------------------  END COMMUNICATIONS  ------------------ #
         # The output file is generated using the variable file_received, which contains all the received data
-        # if button_2.is_pressed and started:  # --------------------------------------------------------TO BE MODIFIED
-        if False:
-        # if started and time.time() - initial_time > delta_time:
+        if I_FACE.sw.Tx.is_on() and started:  # TODO: TO VERIFY
             print("End Comms")
-            if not first_node:
-                nm_write("Local_out_TEAM_B.txt", file_received)
+            nm_write("Local_" + NAME_OF_OUTPUT_FILE, file_received)
 
-            # if check_mounted_usb():
-            #     nm_copy_to_usb("Local_out_TEAM_B.txt", "out_TEAM_B.txt")
+            if check_mounted_usb():
+                nm_copy_to_usb("Local_" + NAME_OF_OUTPUT_FILE, NAME_OF_OUTPUT_FILE)
 
             nm_end_comms()
 
