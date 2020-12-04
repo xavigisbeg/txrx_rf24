@@ -1,9 +1,10 @@
 import RPi.GPIO as GPIO
 
+
 class Switches:
     def __init__(self):
         self.start              = Switch(7)  # when to start (1) the whole program or stop it (0)
-        self.en_transmission    = Switch(5)  # to enable the transmission
+        self.en_transmission    = Switch(5)  # to enable the transmission (1) or stop it (0)
         self.Tx                 = Switch(3)  # transmitter (1) or receiver (0)
         self.SRI                = Switch(8)  # Short Range Mode (1) or not (0)
         self.MRM                = Switch(10)  # Mid Range Mode (1) or not (0)

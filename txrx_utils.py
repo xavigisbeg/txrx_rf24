@@ -86,16 +86,15 @@ class LEDs:
 
 class LED:
     def __init__(self, p_pin):
-        # GPIO.setup(p_pin, GPIO.IN)  # why an IN??
-        GPIO.setup(p_pin, GPIO.OUT, initial=GPIO.LOW)  # we can directly specify an initial value
+        GPIO.setup(p_pin, GPIO.OUT, initial=GPIO.HIGH)  # we specify the initial value  # TODO: might be inverted
         self.pin = p_pin
-        # self.value = GPIO.output(p_pin, GPIO.LOW)  # TODO: might be inverted # what is this value for?
+        # GPIO.output(p_pin, GPIO.HIGH)  # TODO: might be inverted
 
     def on(self):
-        GPIO.output(self.pin, GPIO.HIGH)  # TODO: might be inverted
+        GPIO.output(self.pin, GPIO.LOW)  # TODO: might be inverted
 
     def off(self):
-        GPIO.output(self.pin, GPIO.LOW)  # TODO: might be inverted
+        GPIO.output(self.pin, GPIO.HIGH)  # TODO: might be inverted
 
     def get_value(self):
         return GPIO.input(self.pin)
@@ -106,6 +105,7 @@ class LED:
 
 class Interface:
     def __init__(self):
+        GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BOARD)
         self.sw = Switches()
         self.led = LEDs()
