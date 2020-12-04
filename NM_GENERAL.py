@@ -292,7 +292,7 @@ def nm_network_mode():
 
         # ------------------  END COMMUNICATIONS  ------------------ #
         # The output file is generated using the variable file_received, which contains all the received data
-        if I_FACE.sw.Tx.is_on() and started:  # TODO: TO VERIFY
+        if I_FACE.sw.en_transmission.is_off() and started:  # TODO: TO VERIFY
             print("End Comms")
             nm_write("Local_" + NAME_OF_OUTPUT_FILE, file_received)
 
