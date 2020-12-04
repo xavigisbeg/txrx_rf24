@@ -64,7 +64,7 @@ class Switch:
         self.value = GPIO.input(p_pin)
 
     def read_switch(self):
-        self.value = GPIO.input(self.pin)  # TODO: might be inverted
+        self.value = not GPIO.input(self.pin)  # TODO: might be inverted
 
     def is_on(self):
         self.read_switch()
@@ -76,25 +76,42 @@ class Switch:
 
 class LEDs:
     def __init__(self):
-        self.start   = LED(13)  # far left
-        self.mounted = LED(29)
-        self.Tx      = LED(31)
-        self.SRI     = LED(33)
-        self.MRM     = LED(35)
-        self.NM      = LED(37)  # far-right
+        self.start        = LED(13)  # RED      far left    the process has started with the start switch ON
+        self.mounted      = LED(29)  # RED                  USB correctly mounted
+        self.ready        = LED(31)  # RED                  Tx ready to send or Rx ready to copy to USB
+        self.transmission = LED(33)  # GREEN                blink in transmission every 50 frames
+        # self.to_define          = LED(35)  # WHITE
+        self.success      = LED(37)  # GREEN    far-right   success on Tx (OK received) or on Rx (file uploaded)
+        # self.Tx           = LED(31)  # RED
+        # self.SRI          = LED(33)  # GREEN
+        # self.MRM          = LED(35)  # WHITE
+        # self.NM           = LED(37)  # GREEN    far-right
+
+    def all_off(self):
+        self.start.off()
+        self.mounted.off()
+        self.ready.off()
+        self.transmission.off()
+        # self.to_define.off()
+        self.success.off()
+        # self.Tx.off()
+        # self.SRI.off()
+        # self.MRM.off()
+        # self.NM.off()
 
 
 class LED:
     def __init__(self, p_pin):
-        GPIO.setup(p_pin, GPIO.OUT, initial=GPIO.HIGH)  # we specify the initial value  # TODO: might be inverted
+        GPIO.setup(p_pin, GPIO.OUT, initial=GPIO.LOW)  # we instantiate the LED with an initial value
+        # TODO: might be inverted
         self.pin = p_pin
         # GPIO.output(p_pin, GPIO.HIGH)  # TODO: might be inverted
 
     def on(self):
-        GPIO.output(self.pin, GPIO.LOW)  # TODO: might be inverted
+        GPIO.output(self.pin, GPIO.HIGH)  # TODO: might be inverted
 
     def off(self):
-        GPIO.output(self.pin, GPIO.HIGH)  # TODO: might be inverted
+        GPIO.output(self.pin, GPIO.LOW)  # TODO: might be inverted
 
     def get_value(self):
         return GPIO.input(self.pin)
@@ -123,24 +140,24 @@ class Interface:
             self._mode = None
         return self._mode
 
-    def update(self):
-        """ Updates all switch values and sets LEDs, does not change mode """
-        self.sw.update_switches()
-
-        if self.sw.start.is_on(): self.led.start.on()  # TODO: Enable and start combined usage
-        else: self.led.start.off()
-
-        if self.sw.Tx.is_on(): self.led.Tx.on()
-        else: self.led.Tx.off()
-
-        if self.sw.SRI.is_on(): self.led.SRI.on()
-        else: self.led.SRI.off()
-
-        if self.sw.MRM.is_on(): self.led.MRM.on()
-        else: self.led.MRM.off()
-
-        if self.sw.NM.is_on(): self.led.NM.on()
-        else: self.led.NM.off()
+    # def update(self):
+    #     """ Updates all switch values and sets LEDs, does not change mode """
+    #     self.sw.update_switches()
+    #
+    #     if self.sw.start.is_on(): self.led.start.on()  # TODO: Enable and start combined usage
+    #     else: self.led.start.off()
+    #
+    #     if self.sw.Tx.is_on(): self.led.Tx.on()
+    #     else: self.led.Tx.off()
+    #
+    #     if self.sw.SRI.is_on(): self.led.SRI.on()
+    #     else: self.led.SRI.off()
+    #
+    #     if self.sw.MRM.is_on(): self.led.MRM.on()
+    #     else: self.led.MRM.off()
+    #
+    #     if self.sw.NM.is_on(): self.led.NM.on()
+    #     else: self.led.NM.off()
 
 
 # ----------- Interface Initialisation ----------- #

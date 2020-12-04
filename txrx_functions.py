@@ -35,7 +35,10 @@ def run_st_read_start_switch(pr_state):
     """ Read the start switch """
     start_switch = I_FACE.sw.start.is_on()
     if pr_state == STATE_INIT:
+        I_FACE.led.all_off()  # switch off every LED
         if start_switch:  # if the start switch is ON
+            print("Start process")
+            I_FACE.led.start.on()  # LED to indicate the process has started
             pr_state = STATE_READ_SWITCHES  # we start the process
     else:
         if not start_switch:  # if at anytime the start switch is OFF
@@ -48,15 +51,18 @@ def run_st_read_switches():
     I_FACE.sw.update_switches()  # we update all the switches
     mode = I_FACE.get_mode()
     if mode:  # a mode was selected
+        print(f"Mode selected: {mode}")
         if mode == "NM":
             r_state = STATE_NM
         else:  # Individual Modes, SRI or MRM
             tx_switch = I_FACE.sw.Tx.was_on()
+            print("Transmitter" if tx_switch else "Receiver" + " selected")
             if tx_switch:  # transmitter
                 r_state = STATE_TX_MOUNT_USB
             else:  # receiver
-                r_state = STATE_RX_TRANSMISSION_INIT
+                r_state = STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE
     else:  # no proper mode was selected, we read the switches again
+        print("No proper mode selected")
         r_state = STATE_READ_SWITCHES
     return r_state
 
@@ -67,6 +73,8 @@ def run_st_tx_mount_usb():
     """ Try to mount the USB """
     usb_mounted = check_mounted_usb()
     if usb_mounted:  # if the usb is mounted, we go to the state copy from usb
+        I_FACE.led.mounted.on()  # LED to tell that the USB is correctly mounted
+        time.sleep(1)
         r_state = STATE_TX_COPY_FROM_USB
     else:  # else, we remain in the same state
         r_state = STATE_TX_MOUNT_USB
@@ -85,9 +93,12 @@ def run_st_tx_copy_from_usb():
             print("The USB contains the .txt file: " + file)
             # if file == input_file:  # to verify this is the proper file in the proper mode
             # TODO: decide if we do this check, and return possibly to the reading of switches if fail
-            cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + input_file
-            print("\t > " + cmd)
             try:
+                cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + input_file
+                print("\t > " + cmd)
+                subprocess.check_call(cmd, shell=True)
+                cmd = "sudo umount " + USB_FOLDER
+                print("\t > " + cmd)
                 subprocess.check_call(cmd, shell=True)
             except subprocess.SubprocessError:  # an error occurs during the copying
                 r_state = STATE_TX_MOUNT_USB  # try to remount the USB
@@ -137,6 +148,7 @@ def run_st_tx_create_frames():
         compressed_bytes = compressed_bytes[LENGTH_OF_FRAMES:]  # we remove the bytes put in the list
         frame_num += 1
 
+    I_FACE.led.ready.on()  # LED to tell that the transmitter is ready to send
     r_state = STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE
     return r_state, r_list_of_frames
 
@@ -149,9 +161,10 @@ def run_st_tx_read_transmission_enable_switch(pr_state):
             pr_state = STATE_TX_TRANSMISSION_INIT  # we start the transmission
     else:
         if not en_transmission_switch:  # if at anytime in transmission the en_transmission switch is OFF
+            I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
             # TODO: decide the behavior
-            pr_state = STATE_FINAL  # we go to the final state
-            # pr_state = STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE  # we return to the waiting state for transmission
+            # pr_state = STATE_FINAL  # we go to the final state
+            pr_state = STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE  # we return to the waiting state for transmission
     return pr_state
 
 
@@ -185,6 +198,10 @@ def run_st_tx_transmission_init():
 
 def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
     """ Send one frame from the list of frames """
+    if pr_frame_num % 50 == 0:  # LED for the transmission:
+        # at the start of the transmission, it is ON
+        # and then every 50 frames, it changes its state
+        I_FACE.led.transmission.toggle()
     frame_to_send = p_list_of_frames[pr_frame_num]
 
     if RADIO.write(frame_to_send):  # the frame was correctly sent
@@ -214,9 +231,12 @@ def run_st_tx_transmission_send_eot():
             bytearray_payload = RADIO.read(received_msg_length)
             if bytearray_payload == NOK_MESSAGE:  # Reset transmission
                 print("Received NOK for the EOT, RESET TRANSMISSION")
+                I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
                 r_state = STATE_TX_COMPRESS  # We return to the compression state
             elif bytearray_payload == OK_MESSAGE:  # End transmission
                 print("Received OK for the EOT, END TRANSMISSION")
+                I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
+                I_FACE.led.success.on()
                 r_state = STATE_FINAL
     else:
         print("Max number of retries reached: EOT")
@@ -235,15 +255,19 @@ def run_st_rx_read_transmission_enable_switch(pr_state):
     en_transmission_switch = I_FACE.sw.en_transmission.is_on()
     if pr_state == STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE:
         if en_transmission_switch:  # if the en_transmission switch is ON
+            print("Init transmission")
             pr_state = STATE_RX_TRANSMISSION_INIT  # we start the transmission
     else:
         if not en_transmission_switch:  # if at anytime in transmission the en_transmission switch is OFF
+            print("Disabling transmission")
+            RADIO.stopListening()
+            I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
             if os.path.exists(output_file):
                 pr_state = STATE_RX_MOUNT_USB  # we go to the USB mount state
             else:
                 # TODO: decide the behavior
-                # pr_state = STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE  # we return to the waiting state for transmission
-                pr_state = STATE_FINAL  # we go to the final state
+                pr_state = STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE  # we return to the waiting state for transmission
+                # pr_state = STATE_FINAL  # we go to the final state
     return pr_state
 
 
@@ -271,6 +295,10 @@ def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload
     """ Wait for a message """
     r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
     if RADIO.available():
+        if len(pr_list_received_payload) % 50 == 0:  # LED for the transmission:
+            # at the start of the transmission, it is ON
+            # and then every 50 frames, it changes its state
+            I_FACE.led.transmission.toggle()
         received_msg_length = RADIO.getDynamicPayloadSize()
         total_payload = bytes(RADIO.read(received_msg_length))
         received_payload, eot, cnt = split_received_msg(total_payload)
@@ -305,6 +333,7 @@ def run_st_rx_decompress(p_list_received_payload):
     with open(output_file, "wb") as f:
         f.write(decompressed_bytes)
 
+    I_FACE.led.ready.on()  # LED to tell that the receiver has correctly decompressed, it's ready to write to the USB
     r_state = STATE_RX_TRANSMISSION_SEND_OK_ACK
     RADIO.startListening()
     RADIO.writeAckPayload(1, OK_MESSAGE)  # send a OK in the ACK payload to validate the transmission
@@ -350,6 +379,8 @@ def run_st_rx_mount_usb():
     """ Try to mount the USB """
     usb_mounted = check_mounted_usb()
     if usb_mounted:  # if the usb is mounted, we go to the state copy from usb
+        I_FACE.led.mounted.on()  # LED to tell that the USB is correctly mounted
+        time.sleep(1)
         r_state = STATE_RX_COPY_TO_USB
     else:  # else, we remain in the same state
         r_state = STATE_RX_MOUNT_USB
@@ -361,14 +392,18 @@ def run_st_rx_copy_to_usb():
     mode = I_FACE.get_mode()
     output_file = mode.join(NAME_OF_OUTPUT_FILE)
 
-    cmd = "sudo cp " + output_file + " " + os.path.join(USB_FOLDER, output_file)
-    print("\t > " + cmd)
     try:
+        cmd = "sudo cp " + output_file + " " + USB_FOLDER
+        print("\t > " + cmd)
+        subprocess.check_call(cmd, shell=True)
+        cmd = "sudo umount " + USB_FOLDER
+        print("\t > " + cmd)
         subprocess.check_call(cmd, shell=True)
     except subprocess.SubprocessError:  # an error occurs during the copying
         r_state = STATE_RX_MOUNT_USB  # try to remount the USB
         return r_state
 
+    I_FACE.led.success.on()
     r_state = STATE_FINAL
     return r_state
 
