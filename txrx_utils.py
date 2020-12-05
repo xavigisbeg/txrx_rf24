@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import os
 import subprocess
+
 import RPi.GPIO as GPIO
 
 
 # ------------ Constants Definition ------------ #
 
-# USB_FOLDER = "/media/usb0"
 USB_FOLDER = "/mnt/usb"
 
 
@@ -41,12 +42,18 @@ STATE_NM = 30
 
 class Switches:
     def __init__(self):
-        self.start              = Switch(7)  # when to start (1) the whole program or stop it (0)
-        self.en_transmission    = Switch(5)  # to enable the transmission (1) or stop it (0)
-        self.Tx                 = Switch(3)  # transmitter (1) or receiver (0)
-        self.SRI                = Switch(8)  # Short Range Mode (1) or not (0)
-        self.MRM                = Switch(10)  # Mid Range Mode (1) or not (0)
-        self.NM                 = Switch(12)  # Network Mode (1) or not (0)
+        # start           -> when to start (1) the whole program or stop it (0)
+        self.start           = Switch(7)
+        # en_transmission -> to enable the transmission (1) or stop it (0) | in NM when 0, try to copy to USB
+        self.en_transmission = Switch(5)
+        # Tx              -> transmitter (1) or receiver (0) | in NM when 1, try to copy from USB and be the first node
+        self.Tx              = Switch(3)
+        # SRI             -> Short Range Mode (1) or not (0)
+        self.SRI             = Switch(8)
+        # MRM             -> Mid Range Mode (1) or not (0)
+        self.MRM             = Switch(10)
+        # NM              -> Network Mode (1) or not (0)
+        self.NM              = Switch(12)
 
     def update_switches(self):
         self.start.read_switch()
@@ -64,7 +71,7 @@ class Switch:
         self.value = GPIO.input(p_pin)
 
     def read_switch(self):
-        self.value = not GPIO.input(self.pin)  # TODO: might be inverted
+        self.value = not GPIO.input(self.pin)
 
     def is_on(self):
         self.read_switch()
@@ -76,42 +83,38 @@ class Switch:
 
 class LEDs:
     def __init__(self):
-        self.start        = LED(13)  # RED      far left    the process has started with the start switch ON
-        self.mounted      = LED(29)  # RED                  USB correctly mounted
-        self.ready        = LED(31)  # RED                  Tx ready to send or Rx ready to copy to USB
-        self.transmission = LED(33)  # GREEN                blink in transmission every 50 frames
-        # self.to_define          = LED(35)  # WHITE
-        self.success      = LED(37)  # GREEN    far-right   success on Tx (OK received) or on Rx (file uploaded)
-        # self.Tx           = LED(31)  # RED
-        # self.SRI          = LED(33)  # GREEN
-        # self.MRM          = LED(35)  # WHITE
-        # self.NM           = LED(37)  # GREEN    far-right
+        # start         -> the process has started with the start switch ON
+        self.start        = LED(13)  # GREEN    far left
+        # mounted       -> USB correctly mounted
+        self.mounted      = LED(29)  # BLUE
+        # ready         -> Tx ready to send or Rx ready to copy to USB | in NM, got all messages
+        self.ready        = LED(31)  # GREEN
+        # transmission  -> blink in transmission every 50 frames | in NM, toggled when sending
+        self.transmission = LED(33)  # RED
+        # reboot        -> ON when rebooting | in NM, when synchronized
+        self.reboot       = LED(35)  # RED
+        # success       -> success on Tx (OK received) or on Rx (file uploaded)
+        self.success      = LED(37)  # RED      far-right
 
     def all_off(self):
         self.start.off()
         self.mounted.off()
         self.ready.off()
         self.transmission.off()
-        # self.to_define.off()
+        self.reboot.off()
         self.success.off()
-        # self.Tx.off()
-        # self.SRI.off()
-        # self.MRM.off()
-        # self.NM.off()
 
 
 class LED:
     def __init__(self, p_pin):
         GPIO.setup(p_pin, GPIO.OUT, initial=GPIO.LOW)  # we instantiate the LED with an initial value
-        # TODO: might be inverted
         self.pin = p_pin
-        # GPIO.output(p_pin, GPIO.HIGH)  # TODO: might be inverted
 
     def on(self):
-        GPIO.output(self.pin, GPIO.HIGH)  # TODO: might be inverted
+        GPIO.output(self.pin, GPIO.HIGH)
 
     def off(self):
-        GPIO.output(self.pin, GPIO.LOW)  # TODO: might be inverted
+        GPIO.output(self.pin, GPIO.LOW)
 
     def get_value(self):
         return GPIO.input(self.pin)
@@ -140,25 +143,6 @@ class Interface:
             self._mode = None
         return self._mode
 
-    # def update(self):
-    #     """ Updates all switch values and sets LEDs, does not change mode """
-    #     self.sw.update_switches()
-    #
-    #     if self.sw.start.is_on(): self.led.start.on()  # TODO: Enable and start combined usage
-    #     else: self.led.start.off()
-    #
-    #     if self.sw.Tx.is_on(): self.led.Tx.on()
-    #     else: self.led.Tx.off()
-    #
-    #     if self.sw.SRI.is_on(): self.led.SRI.on()
-    #     else: self.led.SRI.off()
-    #
-    #     if self.sw.MRM.is_on(): self.led.MRM.on()
-    #     else: self.led.MRM.off()
-    #
-    #     if self.sw.NM.is_on(): self.led.NM.on()
-    #     else: self.led.NM.off()
-
 
 # ----------- Interface Initialisation ----------- #
 I_FACE = Interface()
@@ -166,26 +150,60 @@ I_FACE = Interface()
 
 # --------------- USB Management  ---------------- #
 
-def check_mounted_usb():  # TODO use USBmount, so the USB will be auto-mounted
+def mount_usb():
+    """ Try to mount the USB and return True if success """
     # If the directory USB_FOLDER does not exist, create it
     cmd = "[ ! -d \"" + USB_FOLDER + "\" ] && sudo mkdir -p " + USB_FOLDER
     print("\t > " + cmd)
     subprocess.call(cmd, shell=True)
 
-    # Mount the USB to the USB_FOLDER
-    cmd = "sudo mount -t vfat /dev/sd* " + USB_FOLDER
+    # Check the sd* devices available
+    cmd = "ls /dev/sd*"
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, encoding="utf-8")
+    stdout = process.stdout.read().strip()
+    # Try to mount any sd* USB to the USB_FOLDER
+    for sd in stdout.split():
+        cmd = "sudo mount " + sd + " " + USB_FOLDER
+        print("\t > " + cmd)
+        process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, encoding="utf-8")
+        stderr = process.stderr.read()
+        print(stderr, end="")
+        if not stderr:  # no error
+            return True
+        elif "already mounted" in stderr:  # the USB is already mounted
+            return True
+    return False
+
+
+def get_proper_txt_file(input_file, mode):
+    """ Return if possible the text file corresponding to the mode """
+    ending = "NM-TX" if mode == "NM" else mode + "-B-TX"
+
+    list_txt_files = list()
+    for file in os.listdir(USB_FOLDER):
+        if os.path.splitext(file)[1] == ".txt":
+            list_txt_files.append(file)
+
+    file = None
+    if len(list_txt_files) > 0:  # if there is at least one txt file
+        if len(list_txt_files) == 1:  # if there is only one txt file on the USB
+            file = list_txt_files[0]
+        elif input_file in list_txt_files:  # if there is a txt file corresponding to the expected name
+            file = input_file
+        else:
+            for test_file in list_txt_files:
+                if os.path.splitext(test_file)[0].endswith(ending):  # if its name ends as expected
+                    file = test_file
+            if not file:  # if we haven't managed to get one
+                file = list_txt_files[0]  # take the first one
+    return file
+
+
+def unmount_usb():
+    """ Unmount the USB """
+    cmd = "sudo umount " + USB_FOLDER
     print("\t > " + cmd)
-    process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, encoding="utf-8")
-    stderr = process.stderr.read()
-    print(stderr, end="")
-    if not stderr:  # no error
-        return True
-    elif "already mounted" in stderr:  # the USB is already mounted
-        return True
-    elif "does not exist" in stderr:  # there is no USB plugged
-        return False
-    else:
-        return False
+    subprocess.call(cmd, shell=True)
 
 
 # --------------- Message Headers --------------- #

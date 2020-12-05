@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from txrx_utils import *
 from txrx_functions import *
 
 
@@ -22,13 +21,13 @@ def main():
             state = run_st_read_start_switch(state)
 
         # At any time in transmission in TX, if the enable transmission switch is turned off
-        # we go to the final state
+        # we go back to the waiting for enabling transmission state
         if state in [STATE_TX_TRANSMISSION_INIT, STATE_TX_TRANSMISSION_SEND_MSG, STATE_TX_TRANSMISSION_SEND_EOT]:
             state = run_st_tx_read_transmission_enable_switch(state)
 
         # At any time in transmission in RX, if the enable transmission switch is turned off
         # if the file was received successfully, we go to the USB mount state
-        # else, we go to the final state
+        # else, we go back to the waiting for enabling transmission state
         if state in [STATE_RX_TRANSMISSION_INIT, STATE_RX_TRANSMISSION_RECEIVE_MSG,
                      STATE_RX_TRANSMISSION_SEND_NOK_ACK, STATE_RX_TRANSMISSION_SEND_OK_ACK]:
             state = run_st_rx_read_transmission_enable_switch(state)
