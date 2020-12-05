@@ -166,11 +166,11 @@ def mount_usb():
         cmd = "sudo mount " + sd + " " + USB_FOLDER
         print("\t > " + cmd)
         process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, encoding="utf-8")
-        stderr = process.stderr.read()
-        print(stderr, end="")
+        stderr = process.stderr.read().strip()
+        print(stderr)
         if not stderr:  # no error
             return True
-        elif "already mounted" in stderr:  # the USB is already mounted
+        elif stderr.endswith(sd + " already mounted on " + USB_FOLDER + "."):  # the USB is already mounted
             return True
     return False
 
@@ -226,3 +226,17 @@ def split_received_msg(p_received_msg):
     r_eot = (header & EOT_MASK) >> EOT_BIT
     r_cnt = header & CNT_MASK
     return r_received_payload, r_eot, r_cnt
+
+
+def _try_mount_usb():
+    while not mount_usb():
+        print("USB not mounted")
+    print("USB mounted")
+    cmd = "ls " + USB_FOLDER
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, encoding="utf-8")
+    stdout = process.stdout.read().strip()
+    print(stdout)
+
+
+if __name__ == "__main__":
+    _try_mount_usb()
