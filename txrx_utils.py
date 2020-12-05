@@ -170,20 +170,21 @@ def mount_usb():
         print(stderr)
         if not stderr:  # no error
             return True
-        elif stderr.endswith(sd + " already mounted on " + USB_FOLDER + "."):  # the USB is already mounted
+        elif stderr.endswith(f"{sd} already mounted on {USB_FOLDER}."):  # the USB is already mounted
             return True
     return False
 
 
 def get_proper_txt_file(input_file, mode):
-    """ Return if possible the text file corresponding to the mode """
-    ending = "NM-TX" if mode == "NM" else mode + "-B-TX"
-
+    """ Return if possible the text file on the USB corresponding to the mode """
+    # Get the list of text files
     list_txt_files = list()
     for file in os.listdir(USB_FOLDER):
         if os.path.splitext(file)[1] == ".txt":
             list_txt_files.append(file)
 
+    # Find a text file on the USB that corresponds to what is expected
+    ending = "NM-TX" if mode == "NM" else mode + "-B-TX"
     file = None
     if len(list_txt_files) > 0:  # if there is at least one txt file
         if len(list_txt_files) == 1:  # if there is only one txt file on the USB
@@ -226,17 +227,3 @@ def split_received_msg(p_received_msg):
     r_eot = (header & EOT_MASK) >> EOT_BIT
     r_cnt = header & CNT_MASK
     return r_received_payload, r_eot, r_cnt
-
-
-def _try_mount_usb():
-    while not mount_usb():
-        print("USB not mounted")
-    print("USB mounted")
-    cmd = "ls " + USB_FOLDER
-    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, encoding="utf-8")
-    stdout = process.stdout.read().strip()
-    print(stdout)
-
-
-if __name__ == "__main__":
-    _try_mount_usb()

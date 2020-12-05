@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import time
 import zlib
 
 import RPi.GPIO as GPIO
@@ -31,19 +30,30 @@ IRQ_GPIO_PIN = None
 
 # ------------ Common state functions ------------ #
 
+def clear_working_dir():
+    """ Delete the old text files in the working directory """
+    for file in os.listdir():
+        if os.path.splitext(file)[1] == ".txt":
+            print(f"Remove the text file {file} of the working directory")
+            os.remove(file)
+
+
 def run_st_read_start_switch(pr_state):
     """ Read the start switch """
     start_switch = I_FACE.sw.start.is_on()
-    if pr_state == STATE_INIT:
-        if start_switch:  # if the start switch is ON
+    if start_switch:  # if the start switch is ON
+        if pr_state == STATE_INIT:
             print("Start process")
             I_FACE.led.start.on()  # LED to indicate the process has started
             pr_state = STATE_READ_SWITCHES  # we start the process
-    else:
-        if not start_switch:  # if at anytime the start switch is OFF
-            I_FACE.led.all_off()  # switch off every LED
+    else:  # if at anytime the start switch is OFF
+        I_FACE.led.all_off()  # switch off every LED
+        clear_working_dir()
+        try:
             RADIO.stopListening()
-            pr_state = STATE_INIT  # we return to the init state
+        except RuntimeError:  # the radio is not yet initialised
+            pass
+        pr_state = STATE_INIT  # we return to the init state
     return pr_state
 
 
@@ -75,7 +85,6 @@ def run_st_tx_mount_usb():
     usb_mounted = mount_usb()
     if usb_mounted:  # if the usb is mounted, we go to the state copy from usb
         I_FACE.led.mounted.on()  # LED to tell that the USB is correctly mounted
-        time.sleep(1)
         r_state = STATE_TX_COPY_FROM_USB
     else:  # else, we remain in the same state
         r_state = STATE_TX_MOUNT_USB
@@ -252,19 +261,20 @@ def run_st_rx_read_transmission_enable_switch(pr_state):
     output_file = mode.join(NAME_OF_OUTPUT_FILE)
 
     en_transmission_switch = I_FACE.sw.en_transmission.is_on()
-    if pr_state == STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE:
-        if en_transmission_switch:  # if the en_transmission switch is ON
+    if en_transmission_switch:  # if the en_transmission switch is ON
+        if pr_state == STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE:
             print("Init transmission")
             pr_state = STATE_RX_TRANSMISSION_INIT  # we start the transmission
-    else:
-        if not en_transmission_switch:  # if at anytime in transmission the en_transmission switch is OFF
-            print("Disabling transmission")
+    else:  # if at anytime in transmission the en_transmission switch is OFF
+        I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
+        try:
             RADIO.stopListening()
-            I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
-            if os.path.exists(output_file):
-                pr_state = STATE_RX_MOUNT_USB  # we go to the USB mount state
-            else:
-                pr_state = STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE  # we return to the waiting state for transmission
+        except RuntimeError:  # the radio is not yet initialised
+            pass
+        if os.path.exists(output_file):
+            pr_state = STATE_RX_MOUNT_USB  # we go to the USB mount state
+        else:
+            pr_state = STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE  # we return to the waiting state for transmission
     return pr_state
 
 
@@ -380,7 +390,6 @@ def run_st_rx_mount_usb():
     usb_mounted = mount_usb()
     if usb_mounted:  # if the usb is mounted, we go to the state copy from usb
         I_FACE.led.mounted.on()  # LED to tell that the USB is correctly mounted
-        time.sleep(1)
         r_state = STATE_RX_COPY_TO_USB
     else:  # else, we remain in the same state
         r_state = STATE_RX_MOUNT_USB
