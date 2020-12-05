@@ -195,8 +195,6 @@ def get_proper_txt_file(input_file, mode):
             for test_file in list_txt_files:
                 if os.path.splitext(test_file)[0].endswith(ending):  # if its name ends as expected
                     file = test_file
-            if not file:  # if we haven't managed to get one
-                file = list_txt_files[0]  # take the first one
     return file
 
 
