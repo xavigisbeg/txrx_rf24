@@ -68,7 +68,7 @@ class Switch:
     def __init__(self, p_pin):
         GPIO.setup(p_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         self.pin = p_pin
-        self.value = GPIO.input(p_pin)
+        self.value = not GPIO.input(p_pin)
 
     def read_switch(self):
         self.value = not GPIO.input(self.pin)
@@ -154,7 +154,6 @@ def mount_usb():
     """ Try to mount the USB and return True if success """
     # If the directory USB_FOLDER does not exist, create it
     cmd = "[ ! -d \"" + USB_FOLDER + "\" ] && sudo mkdir -p " + USB_FOLDER
-    print("\t > " + cmd)
     subprocess.call(cmd, shell=True)
 
     # Check the sd* devices available
@@ -164,10 +163,9 @@ def mount_usb():
     # Try to mount any sd* USB to the USB_FOLDER
     for sd in stdout.split():
         cmd = "sudo mount " + sd + " " + USB_FOLDER
-        print("\t > " + cmd)
         process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, encoding="utf-8")
         stderr = process.stderr.read().strip()
-        print(stderr)
+        # print(stderr)
         if not stderr:  # no error
             return True
         elif stderr.endswith(f"{sd} already mounted on {USB_FOLDER}."):  # the USB is already mounted
@@ -201,7 +199,6 @@ def get_proper_txt_file(input_file, mode):
 def unmount_usb():
     """ Unmount the USB """
     cmd = "sudo umount " + USB_FOLDER
-    print("\t > " + cmd)
     subprocess.call(cmd, shell=True)
 
 

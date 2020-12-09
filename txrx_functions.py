@@ -34,7 +34,7 @@ def clear_working_dir():
     """ Delete the old text files in the working directory """
     for file in os.listdir():
         if os.path.splitext(file)[1] == ".txt":
-            print(f"Remove the text file {file} of the working directory")
+            # print(f"Remove the text file {file} of the working directory")
             os.remove(file)
 
 
@@ -43,7 +43,7 @@ def run_st_read_start_switch(pr_state):
     start_switch = I_FACE.sw.start.is_on()
     if start_switch:  # if the start switch is ON
         if pr_state == STATE_INIT:
-            print("Start process")
+            # print("Start process")
             I_FACE.led.start.on()  # LED to indicate the process has started
             pr_state = STATE_READ_SWITCHES  # we start the process
     else:  # if at anytime the start switch is OFF
@@ -62,18 +62,18 @@ def run_st_read_switches():
     I_FACE.sw.update_switches()  # we update all the switches
     mode = I_FACE.get_mode()
     if mode:  # a mode was selected
-        print(f"Mode selected: {mode}")
+        # print(f"Mode selected: {mode}")
         if mode == "NM":
             r_state = STATE_NM
         else:  # Individual Modes, SRI or MRM
             tx_switch = I_FACE.sw.Tx.was_on()
-            print("Transmitter" if tx_switch else "Receiver" + " selected")
+            # print("Transmitter" if tx_switch else "Receiver" + " selected")
             if tx_switch:  # transmitter
                 r_state = STATE_TX_MOUNT_USB
             else:  # receiver
                 r_state = STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE
     else:  # no proper mode was selected, we read the switches again
-        print("No proper mode selected")
+        # print("No proper mode selected")
         r_state = STATE_READ_SWITCHES
     return r_state
 
@@ -99,9 +99,8 @@ def run_st_tx_copy_from_usb():
     file = get_proper_txt_file(input_file, mode)
 
     if file:
-        print("The USB contains the .txt file: " + file)
+        # print("The USB contains the .txt file: " + file)
         cmd = "sudo cp " + os.path.join(USB_FOLDER, file) + " " + input_file
-        print("\t > " + cmd)
         try:
             subprocess.check_call(cmd, shell=True)
         except subprocess.SubprocessError:  # an error occurs during the copying
@@ -112,7 +111,7 @@ def run_st_tx_copy_from_usb():
         unmount_usb()
         r_state = STATE_TX_COMPRESS
     else:
-        print("The USB does not contain any .txt file")
+        # print("The USB does not contain any .txt file")
         I_FACE.led.mounted.off()
         unmount_usb()
         r_state = STATE_TX_MOUNT_USB  # try to remount the USB
@@ -220,7 +219,7 @@ def run_st_tx_transmission_send_msg(p_list_of_frames, pr_frame_num):
                 RADIO.read(received_msg_length)
             r_state = STATE_TX_TRANSMISSION_SEND_EOT  # we have to send the end of transmission
     else:
-        print(f"Max number of retries reached {pr_frame_num}: {frame_to_send}")
+        # print(f"Max number of retries reached {pr_frame_num}: {frame_to_send}")
         r_state = STATE_TX_TRANSMISSION_SEND_MSG
     return r_state, pr_frame_num
 
@@ -231,23 +230,24 @@ def run_st_tx_transmission_send_eot():
     if RADIO.write(frame_to_send):  # the EOT was correctly sent
         r_state = STATE_TX_TRANSMISSION_SEND_EOT
         if not RADIO.available():
-            print("Received empty ACK for the EOT")
+            # print("Received empty ACK for the EOT")
+            pass
         else:
             received_msg_length = RADIO.getDynamicPayloadSize()
             bytearray_payload = RADIO.read(received_msg_length)
             if bytearray_payload == NOK_MESSAGE:  # Reset transmission
-                print("Received NOK for the EOT, RESET TRANSMISSION")
+                # print("Received NOK for the EOT, RESET TRANSMISSION")
                 I_FACE.led.reboot.on()  # LED to tell the system is rebooting
                 I_FACE.led.ready.off()
                 I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
                 r_state = STATE_TX_COMPRESS  # We return to the compression state
             elif bytearray_payload == OK_MESSAGE:  # End transmission
-                print("Received OK for the EOT, END TRANSMISSION")
+                # print("Received OK for the EOT, END TRANSMISSION")
                 I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
                 I_FACE.led.success.on()
                 r_state = STATE_FINAL
     else:
-        print("Max number of retries reached: EOT")
+        # print("Max number of retries reached: EOT")
         r_state = STATE_TX_TRANSMISSION_SEND_EOT
 
     return r_state
@@ -263,7 +263,7 @@ def run_st_rx_read_transmission_enable_switch(pr_state):
     en_transmission_switch = I_FACE.sw.en_transmission.is_on()
     if en_transmission_switch:  # if the en_transmission switch is ON
         if pr_state == STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE:
-            print("Init transmission")
+            # print("Init transmission")
             pr_state = STATE_RX_TRANSMISSION_INIT  # we start the transmission
     else:  # if at anytime in transmission the en_transmission switch is OFF
         I_FACE.led.transmission.off()  # LED for the transmission: the transmission is over, it's OFF
@@ -311,13 +311,13 @@ def run_st_rx_transmission_receive_msg(pr_previous_cnt, pr_list_received_payload
         received_payload, eot, cnt = split_received_msg(total_payload)
 
         if eot:
-            print(f"Received EOT")
+            # print("Received EOT")
             I_FACE.led.transmission.off()
             RADIO.stopListening()
             r_state = STATE_RX_DECOMPRESS
         elif cnt != pr_previous_cnt:  # test if we haven't twice the same message
             pr_previous_cnt = cnt
-            print(f"Received packet ({len(pr_list_received_payload)}) {received_payload}")
+            # print(f"Received packet ({len(pr_list_received_payload)}) {received_payload}")
             pr_list_received_payload.append(received_payload)
     return r_state, pr_previous_cnt, pr_list_received_payload
 
@@ -332,7 +332,7 @@ def run_st_rx_decompress(p_list_received_payload):
     try:
         decompressed_bytes = zlib.decompress(compressed_bytes, wbits=15)
     except zlib.error:
-        print("ERROR IN DECOMPRESSION")
+        # print("ERROR IN DECOMPRESSION")
         I_FACE.led.reboot.on()  # LED to tell the system is rebooting
         RADIO.startListening()
         RADIO.writeAckPayload(1, NOK_MESSAGE)  # send a NOK in the ACK payload to reset the transmission
@@ -360,13 +360,13 @@ def run_st_rx_transmission_send_nok_ack():
         received_payload, eot, cnt = split_received_msg(total_payload)
 
         if eot:
-            print(f"Received EOT, we write a new NOK ack payload")
+            # print("Received EOT, we write a new NOK ack payload")
             RADIO.writeAckPayload(1, NOK_MESSAGE)
             r_state = STATE_RX_TRANSMISSION_SEND_NOK_ACK
         else:  # the transmitter has already starts the transmission of the file
-            print("RESET TRANSMISSION")
+            # print("RESET TRANSMISSION")
             I_FACE.led.reboot.off()  # reboot LED turned off
-            print(f"Received packet ({0}) {received_payload}")
+            # print(f"Received packet ({0}) {received_payload}")
             r_previous_cnt = cnt
             r_list_received_payload = [received_payload]
             r_state = STATE_RX_TRANSMISSION_RECEIVE_MSG
@@ -377,7 +377,7 @@ def run_st_rx_transmission_send_nok_ack():
 def run_st_rx_transmission_send_ok_ack():
     """ Send a OK message to tell the transmitter that everything was fine """
     if RADIO.available():
-        print(f"Received message, we write a new OK ack payload")
+        # print("Received message, we write a new OK ack payload")
         received_msg_length = RADIO.getDynamicPayloadSize()
         RADIO.read(received_msg_length)
         RADIO.writeAckPayload(1, OK_MESSAGE)
@@ -402,7 +402,6 @@ def run_st_rx_copy_to_usb():
     output_file = mode.join(NAME_OF_OUTPUT_FILE)
 
     cmd = "sudo cp " + output_file + " " + USB_FOLDER
-    print("\t > " + cmd)
     try:
         subprocess.check_call(cmd, shell=True)
     except subprocess.SubprocessError:  # an error occurs during the copying

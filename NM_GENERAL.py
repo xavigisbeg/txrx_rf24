@@ -66,7 +66,7 @@ def nm_read_from_usb():
     file = get_proper_txt_file(NAME_OF_INPUT_FILE, "NM")
 
     if file:
-        print(file)
+        # print(file)
         with open(os.path.join(USB_FOLDER, file), "rb") as f:
             contents = f.read()
             return contents  # returns the contents read from the path
@@ -128,7 +128,7 @@ def nm_synchronize(node_id_received, synchronized):
     This function establishes time synchronization.
     Computes the remaining time until the time slot to transmit starts (according to its NODE_ID)"""
     if not synchronized:
-        print("STATE : synchronized")
+        # print("STATE : synchronized")
         I_FACE.led.reboot.on()
     synchronized = True
     syncro_time = time.monotonic() * 1000  # Time of synchronization
@@ -145,8 +145,8 @@ def nm_synchronize(node_id_received, synchronized):
 def nm_network_mode():
     """ PUBLIC WITH REQUIRED MODIFICATIONS!
     This function must be introduced in the main. It is the main function for the network mode operation """
-    print("Mode NM")
-    print("STATE: SILENCED")
+    # print("Mode NM")
+    # print("STATE: SILENCED")
 
     number_packets_total = 35  # Number of packets in case the file is bigger than expected
     file_received = bytearray(number_packets_total * DATA_SIZE)  # Where we put the data received
@@ -180,14 +180,12 @@ def nm_network_mode():
             last_packet_received = (control_byte_integer_2 & 0x80) >> 7  # Masked by 10000000
             payload_size_received = (control_byte_integer_2 & 0x7C) >> 2  # Masked by 01111100
 
-            print(f"Received message from {node_id_received}: {packet_id_received}")
+            # print(f"Received message from {node_id_received}: {packet_id_received}")
 
             # ------  SYNCHRONIZATION  ------ #
             if packet_id_received == 0:  # If first packet, synchronize()
-                print(f"Received sync message from {node_id_received}")
+                # print(f"Received sync message from {node_id_received}")
                 time_slot, synchronized = nm_synchronize(node_id_received, synchronized)
-                # now_to_print = time.monotonic()
-                # print("Packet 0 received. Time: " + str(now_to_print))
 
             # ------  DATA RECEPTION  ------ #
             if buffered_packets[packet_id_received] == 0:
@@ -219,7 +217,7 @@ def nm_network_mode():
                     file_received = file_received_aux
 
                 if all([buffered_packets[i] == 1 for i in range(len(buffered_packets))]):
-                    print("We have all messages")
+                    # print("We have all messages")
                     I_FACE.led.ready.on()
 
         # ------------------  FIRST TRANSMITTER  ------------------ #
@@ -261,7 +259,7 @@ def nm_network_mode():
                         packet_id_received = packet_id_received + 1
 
                     started = True  # The communication has started!
-                    print("STATE: synchronized")
+                    # print("STATE: synchronized")
                     synchronized = True  # This node is synchronized (first node)
                     I_FACE.led.reboot.on()
                     I_FACE.led.ready.on()
@@ -282,7 +280,7 @@ def nm_network_mode():
                 if buffered_packets[i] == 1:
                     now = time.monotonic() * 1000  # Current time
                     buffer_to_tx = file_to_transmit[i * (DATA_SIZE + HEADERS_SIZE): (i + 1) * (DATA_SIZE + HEADERS_SIZE)]  # 32 bytes to transmit
-                    print("Sending message", i)
+                    # print("Sending message", i)
                     nm_transmit(buffer_to_tx)
                     wait_time = MINIMUM_TIME_TRANSMISSION - (time.monotonic() * 1000 - now)
                     if wait_time > 0:
@@ -293,7 +291,7 @@ def nm_network_mode():
         # ------------------  END COMMUNICATIONS  ------------------ #
         # The output file is generated using the variable file_received, which contains all the received data
         if not I_FACE.sw.en_transmission.is_on() and started:
-            print("End Comms")
+            # print("End Comms")
             I_FACE.led.transmission.off()
             nm_end_comms()
             nm_write("Local_" + NAME_OF_OUTPUT_FILE, file_received)

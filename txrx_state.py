@@ -55,7 +55,7 @@ def main():
 
         elif state == STATE_TX_CREATE_FRAMES_TO_SEND:
             state, tx_list_of_frames = run_st_tx_create_frames()
-            print(f"Number of messages: {len(tx_list_of_frames)}")
+            # print(f"Number of messages: {len(tx_list_of_frames)}")
 
         elif state == STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE:
             # stuck here until the enable transmission switch is ON
