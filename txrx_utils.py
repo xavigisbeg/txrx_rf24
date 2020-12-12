@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import os
 import subprocess
+
 import RPi.GPIO as GPIO
 
 
 # ------------ Constants Definition ------------ #
 
-# USB_FOLDER = "/media/usb0"
 USB_FOLDER = "/mnt/usb"
 
 
@@ -16,33 +17,43 @@ STATE_FINAL         = 0
 STATE_INIT          = 1
 STATE_READ_SWITCHES = 2
 
-STATE_TX_MOUNT_USB                    = 3
-STATE_TX_COPY_FROM_USB                = 4
-STATE_TX_COMPRESS                     = 5
-STATE_TX_CREATE_FRAMES_TO_SEND        = 6
-STATE_TX_TRANSMISSION_INIT            = 7
-STATE_TX_TRANSMISSION_SEND_MSG        = 8
-STATE_TX_TRANSMISSION_SEND_EOT        = 9
+STATE_TX_MOUNT_USB                    = 10
+STATE_TX_COPY_FROM_USB                = 11
+STATE_TX_COMPRESS                     = 12
+STATE_TX_CREATE_FRAMES_TO_SEND        = 13
+STATE_TX_WAIT_FOR_TRANSMISSION_ENABLE = 14
+STATE_TX_TRANSMISSION_INIT            = 15
+STATE_TX_TRANSMISSION_SEND_MSG        = 16
+STATE_TX_TRANSMISSION_SEND_EOT        = 17
 
-STATE_RX_TRANSMISSION_INIT        = 10
-STATE_RX_TRANSMISSION_RECEIVE_MSG = 11
-STATE_RX_DECOMPRESS               = 12
-STATE_RX_MOUNT_USB                = 13
-STATE_RX_COPY_TO_USB              = 14
+STATE_RX_WAIT_FOR_TRANSMISSION_ENABLE = 20
+STATE_RX_TRANSMISSION_INIT            = 21
+STATE_RX_TRANSMISSION_RECEIVE_MSG     = 22
+STATE_RX_DECOMPRESS                   = 23
+STATE_RX_TRANSMISSION_SEND_NOK_ACK    = 24
+STATE_RX_TRANSMISSION_SEND_OK_ACK     = 25
+STATE_RX_MOUNT_USB                    = 26
+STATE_RX_COPY_TO_USB                  = 27
 
-STATE_NM = 15
+STATE_NM = 30
 
 
-# --------------- Interface  ---------------- #
+# --------------- Interface Class Definition  ---------------- #
 
 class Switches:
     def __init__(self):
-        self.start              = Switch(7)  # when to start (1) the whole program or stop it (0)
-        self.en_transmission    = Switch(5)  # to enable the transmission
-        self.Tx                 = Switch(3)  # transmitter (1) or receiver (0)
-        self.SRI                = Switch(8)  # Short Range Mode (1) or not (0)
-        self.MRM                = Switch(10)  # Mid Range Mode (1) or not (0)
-        self.NM                 = Switch(12)  # Network Mode (1) or not (0)
+        # start           -> when to start (1) the whole program or stop it (0)
+        self.start           = Switch(7)
+        # en_transmission -> to enable the transmission (1) or stop it (0) | in NM when 0, try to copy to USB
+        self.en_transmission = Switch(5)
+        # Tx              -> transmitter (1) or receiver (0) | in NM when 1, try to copy from USB and be the first node
+        self.Tx              = Switch(3)
+        # SRI             -> Short Range Mode (1) or not (0)
+        self.SRI             = Switch(8)
+        # MRM             -> Mid Range Mode (1) or not (0)
+        self.MRM             = Switch(10)
+        # NM              -> Network Mode (1) or not (0)
+        self.NM              = Switch(12)
 
     def update_switches(self):
         self.start.read_switch()
@@ -57,10 +68,10 @@ class Switch:
     def __init__(self, p_pin):
         GPIO.setup(p_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         self.pin = p_pin
-        self.value = GPIO.input(p_pin)
+        self.value = not GPIO.input(p_pin)
 
     def read_switch(self):
-        self.value = GPIO.input(self.pin)  # TODO: might be inverted
+        self.value = not GPIO.input(self.pin)
 
     def is_on(self):
         self.read_switch()
@@ -72,89 +83,123 @@ class Switch:
 
 class LEDs:
     def __init__(self):
-        self.start   = LED(13)  # far left
-        self.mounted = LED(29)
-        self.Tx      = LED(31)
-        self.SRI     = LED(33)
-        self.MRM     = LED(35)
-        self.NM      = LED(37)  # far-right
+        # start         -> the process has started with the start switch ON
+        self.start        = LED(13)  # GREEN    far left
+        # mounted       -> USB correctly mounted
+        self.mounted      = LED(29)  # BLUE
+        # ready         -> Tx ready to send or Rx ready to copy to USB | in NM, got all messages
+        self.ready        = LED(31)  # GREEN
+        # transmission  -> blink in transmission every 50 frames | in NM, toggled when sending
+        self.transmission = LED(33)  # RED
+        # reboot        -> ON when rebooting | in NM, when synchronized
+        self.reboot       = LED(35)  # RED
+        # success       -> success on Tx (OK received) or on Rx (file uploaded)
+        self.success      = LED(37)  # RED      far-right
+
+    def all_off(self):
+        self.start.off()
+        self.mounted.off()
+        self.ready.off()
+        self.transmission.off()
+        self.reboot.off()
+        self.success.off()
 
 
 class LED:
     def __init__(self, p_pin):
-        GPIO.setup(p_pin, GPIO.IN)
+        GPIO.setup(p_pin, GPIO.OUT, initial=GPIO.LOW)  # we instantiate the LED with an initial value
         self.pin = p_pin
-        self.value = GPIO.output(p_pin, GPIO.LOW)  # TODO: might be inverted
 
     def on(self):
-        GPIO.output(self.pin, GPIO.HIGH)  # TODO: might be inverted
+        GPIO.output(self.pin, GPIO.HIGH)
 
     def off(self):
-        GPIO.output(self.pin, GPIO.LOW)  # TODO: might be inverted
+        GPIO.output(self.pin, GPIO.LOW)
+
+    def get_value(self):
+        return GPIO.input(self.pin)
+
+    def toggle(self):
+        GPIO.output(self.pin, not self.get_value())
 
 
 class Interface:
-
     def __init__(self):
+        GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BOARD)
         self.sw = Switches()
         self.led = LEDs()
         self._mode = None
 
-    def get_mode(self):  # TODO: Decide if mode is updated anytime, so it happens every update and remove first line
-        self.update()
-        if self.sw.SRI.is_on() and not any([self.sw.MRM.is_on(), self.sw.NM.is_on()]):
+    def get_mode(self):
+        """ Returns the mode we're in, using the old position of the switches """
+        if self.sw.SRI.was_on() and not any([self.sw.MRM.was_on(), self.sw.NM.was_on()]):
             self._mode = "SRI"
-        elif self.sw.MRM.is_on() and not any([self.sw.SRI.is_on(), self.sw.NM.is_on()]):
+        elif self.sw.MRM.was_on() and not any([self.sw.SRI.was_on(), self.sw.NM.was_on()]):
             self._mode = "MRM"
-        elif self.sw.NM.is_on() and not any([self.sw.SRI.is_on(), self.sw.MRM.is_on()]):
+        elif self.sw.NM.was_on() and not any([self.sw.SRI.was_on(), self.sw.MRM.was_on()]):
             self._mode = "NM"
         else:
             self._mode = None
         return self._mode
 
-    def update(self):
-        """Updates all switch values and sets LEDs, does not change mode"""
-        self.sw.update_switches()
 
-        if self.sw.start.is_on(): self.led.start.on()  # TODO: Enable and start combined usage
-        else: self.led.start.off()
-
-        if self.sw.Tx.is_on(): self.led.Tx.on()
-        else: self.led.Tx.off()
-
-        if self.sw.SRI.is_on(): self.led.SRI.on()
-        else: self.led.SRI.off()
-
-        if self.sw.MRM.is_on(): self.led.MRM.on()
-        else: self.led.MRM.off()
-
-        if self.sw.NM.is_on(): self.led.NM.on()
-        else: self.led.NM.off()
+# ----------- Interface Initialisation ----------- #
+I_FACE = Interface()
 
 
 # --------------- USB Management  ---------------- #
 
-def check_mounted_usb():  # TODO use USBmount, so the USB will be auto-mounted
+def mount_usb():
+    """ Try to mount the USB and return True if success """
     # If the directory USB_FOLDER does not exist, create it
     cmd = "[ ! -d \"" + USB_FOLDER + "\" ] && sudo mkdir -p " + USB_FOLDER
-    print("\t > " + cmd)
     subprocess.call(cmd, shell=True)
 
-    # Mount the USB to the USB_FOLDER
-    cmd = "sudo mount -t vfat /dev/sd* " + USB_FOLDER
-    print("\t > " + cmd)
-    process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, encoding="utf-8")
-    stderr = process.stderr.read()
-    print(stderr, end="")
-    if not stderr:  # no error
-        return True
-    elif "already mounted" in stderr:  # the USB is already mounted
-        return True
-    elif "does not exist" in stderr:  # there is no USB plugged
-        return False
-    else:
-        return False
+    # Check the sd* devices available
+    cmd = "ls /dev/sd*"
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, encoding="utf-8")
+    stdout = process.stdout.read().strip()
+    # Try to mount any sd* USB to the USB_FOLDER
+    for sd in stdout.split():
+        cmd = "sudo mount " + sd + " " + USB_FOLDER
+        process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, encoding="utf-8")
+        stderr = process.stderr.read().strip()
+        # print(stderr)
+        if not stderr:  # no error
+            return True
+        elif stderr.endswith(f"{sd} already mounted on {USB_FOLDER}."):  # the USB is already mounted
+            return True
+    return False
+
+
+def get_proper_txt_file(input_file, mode):
+    """ Return if possible the text file on the USB corresponding to the mode """
+    # Get the list of text files
+    list_txt_files = list()
+    for file in os.listdir(USB_FOLDER):
+        if os.path.splitext(file)[1] == ".txt":
+            list_txt_files.append(file)
+
+    # Find a text file on the USB that corresponds to what is expected
+    ending = "NM-TX" if mode == "NM" else mode + "-B-TX"
+    file = None
+    if len(list_txt_files) > 0:  # if there is at least one txt file
+        if len(list_txt_files) == 1:  # if there is only one txt file on the USB
+            file = list_txt_files[0]
+        elif input_file in list_txt_files:  # if there is a txt file corresponding to the expected name
+            file = input_file
+        else:
+            for test_file in list_txt_files:
+                if os.path.splitext(test_file)[0].endswith(ending):  # if its name ends as expected
+                    file = test_file
+    return file
+
+
+def unmount_usb():
+    """ Unmount the USB """
+    cmd = "sudo umount " + USB_FOLDER
+    subprocess.call(cmd, shell=True)
 
 
 # --------------- Message Headers --------------- #
@@ -164,7 +209,7 @@ CNT_MASK = 0b11
 
 
 def create_header(p_frame_num, eot=False):
-    """ Create the message header with on the EOT bit and a counter on 4 bits based on the frame number """
+    """ Create the message header with on the EOT bit and a counter on 2 bits based on the frame number """
     header = EOT_MASK*eot + (p_frame_num & CNT_MASK)
     r_bytes_header = header.to_bytes(1, "big")
     return r_bytes_header
@@ -176,5 +221,4 @@ def split_received_msg(p_received_msg):
     header = int.from_bytes(p_received_msg[:1], "big")
     r_eot = (header & EOT_MASK) >> EOT_BIT
     r_cnt = header & CNT_MASK
-    # print(f"header: {header:#011_b}, EOT: {r_eot:b}, counter: {r_cnt:06_b}")
     return r_received_payload, r_eot, r_cnt
